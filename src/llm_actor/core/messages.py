@@ -2,10 +2,12 @@ import asyncio
 from dataclasses import dataclass, field
 from uuid import uuid4
 
+from llm_actor.core.request import LLMRequest
+
 
 @dataclass
 class ActorMessage[T]:
-    prompt: str
+    request: LLMRequest
     response_model: type[T] | None = None
     id: str | None = None
     future: asyncio.Future[T] | None = None

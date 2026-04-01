@@ -7,6 +7,7 @@ from uuid import uuid4
 from llm_actor.actors.worker import ModelActor
 from llm_actor.client.interface import LLMClientWithCircuitBreakerInterface
 from llm_actor.core.messages import ActorMessage
+from llm_actor.core.request import LLMRequest
 from llm_actor.exceptions import ActorFailedError, OverloadError, PoolShuttingDownError
 from llm_actor.logger import BrokerLogger
 from llm_actor.metrics import MetricsCollector
@@ -285,7 +286,7 @@ class SupervisedActorPool:
     @overload
     async def generate(
         self,
-        prompt: str,
+        request: LLMRequest,
         response_model: None = None,
         *,
         priority: int = 10,
@@ -294,7 +295,7 @@ class SupervisedActorPool:
     @overload
     async def generate(
         self,
-        prompt: str,
+        request: LLMRequest,
         response_model: type[T],
         *,
         priority: int = 10,
@@ -302,13 +303,13 @@ class SupervisedActorPool:
 
     async def generate(
         self,
-        prompt: str,
+        request: LLMRequest,
         response_model: type[Any] | None = None,
         *,
         priority: int = 10,
     ) -> Any | str:
         """
-        High-level interface for sending prompt to pool.
+        High-level interface for sending request to pool.
         If response_model is provided, returns validated Pydantic model instance.
         Otherwise returns string response.
         """
@@ -318,7 +319,7 @@ class SupervisedActorPool:
         future: asyncio.Future[Any] = loop.create_future()
 
         msg = ActorMessage(
-            prompt=prompt,
+            request=request,
             response_model=response_model,
             future=future,
             priority=priority,

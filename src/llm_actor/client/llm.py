@@ -1,10 +1,12 @@
 import json
 import re
-from typing import Any, TypeVar, overload
+from dataclasses import replace
+from typing import Any, TypeVar, cast, overload
 
 from pydantic import ValidationError
 
 from llm_actor.client.interface import LLMClientInterface
+from llm_actor.core.request import LLMRequest
 from llm_actor.logger import BrokerLogger
 from llm_actor.resilience.circuit_breaker import CircuitBreaker
 
@@ -35,8 +37,6 @@ def build_json_prompt(prompt: str, response_model: type[Any]) -> str:
         )
     cleaned_schema = _strip_schema_descriptions(response_model.model_json_schema())
     serialized_schema = json.dumps(cleaned_schema, ensure_ascii=False, separators=(",", ":"))
-    # TODO: некоторые провайдеры (OpenAI) требуют response_format={"type": "json_object"}.
-    # Передача этого параметра требует изменения LLMClientInterface.generate_async.
     return (
         f"{prompt}\n\n"
         "Return only valid JSON that strictly matches this JSON Schema:\n"
@@ -68,8 +68,6 @@ def _extract_json_from_response(response: str) -> str:
     if match:
         return match.group(1).strip()
 
-    # Используем JSONDecoder для корректного поиска объекта или массива.
-    # raw_decode обрабатывает вложенность и фигурные скобки внутри строк.
     decoder = json.JSONDecoder()
     for start_char in ("{", "["):
         idx = response.find(start_char)
@@ -99,17 +97,11 @@ class LLMClientWithCircuitBreaker:
         self._max_validation_attempts = max_validation_attempts
         self._logger = BrokerLogger.get_logger(name="llm_client")
 
-    @overload
-    async def generate(self, prompt: str, response_model: None = None) -> str: ...
-
-    @overload
-    async def generate(self, prompt: str, response_model: type[T]) -> T: ...
-
-    async def _generate_raw_text(self, prompt: str) -> str:
-        response_str = await self._circuit_breaker.call(self._client.generate_async, prompt)
+    async def _generate_raw_text(self, request: LLMRequest) -> str:
+        response_str = await self._circuit_breaker.call(self._client.generate_async, request)
         if response_str is None:
             raise ValueError("Received None response from client")
-        return response_str
+        return cast(str, response_str)
 
     def _validate_response_model_output(self, response_str: str, response_model: type[Any]) -> Any:
         cleaned_response = _extract_json_from_response(response_str)
@@ -175,13 +167,22 @@ class LLMClientWithCircuitBreaker:
 
         raise error
 
-    async def generate(self, prompt: str, response_model: type[Any] | None = None) -> Any | str:
-        if response_model is None:
-            return await self._generate_raw_text(prompt)
+    @overload
+    async def generate(self, request: LLMRequest, response_model: None = None) -> str: ...
 
-        prompt_with_schema = build_json_prompt(prompt, response_model)
+    @overload
+    async def generate(self, request: LLMRequest, response_model: type[T]) -> T: ...
+
+    async def generate(
+        self, request: LLMRequest, response_model: type[Any] | None = None
+    ) -> Any | str:
+        if response_model is None:
+            return await self._generate_raw_text(request)
+
+        prompt_with_schema = build_json_prompt(request.prompt, response_model)
+        structured_request = replace(request, prompt=prompt_with_schema)
         for validation_attempt in range(1, self._max_validation_attempts + 1):
-            response_str = await self._generate_raw_text(prompt_with_schema)
+            response_str = await self._generate_raw_text(structured_request)
 
             try:
                 validated = self._validate_response_model_output(response_str, response_model)

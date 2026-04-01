@@ -7,6 +7,7 @@ from llm_actor import (
     MetricsCollector,
 )
 from llm_actor.client.llm import LLMClientWithCircuitBreaker
+from llm_actor.core.request import LLMRequest
 from tests.dummy_llm_client import DummyLLMClient
 
 
@@ -18,8 +19,8 @@ async def test_llm_client_interface_compliance():
     circuit_breaker = CircuitBreaker(settings=settings, metrics=metrics)
     wrapped_client = LLMClientWithCircuitBreaker(dummy_client, circuit_breaker)
 
-    dummy_result = await dummy_client.generate_async("test")
-    wrapped_result = await wrapped_client.generate("test")
+    dummy_result = await dummy_client.generate_async(LLMRequest(prompt="test"))
+    wrapped_result = await wrapped_client.generate(LLMRequest(prompt="test"))
 
     assert isinstance(dummy_client, LLMClientInterface)
     assert isinstance(wrapped_client, LLMClientWithCircuitBreakerInterface)

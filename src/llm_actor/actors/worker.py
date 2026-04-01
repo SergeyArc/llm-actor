@@ -235,7 +235,7 @@ class ModelActor:
                 log = self._logger.bind(request_id=msg.id)
                 log.debug("Processing request")
                 try:
-                    result = await self._client.generate(msg.prompt, msg.response_model)
+                    result = await self._client.generate(msg.request, msg.response_model)
                     log.debug("Request processed successfully")
                     return result
                 except Exception as e:

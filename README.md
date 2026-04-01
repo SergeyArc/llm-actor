@@ -35,22 +35,36 @@ pip install llm-actor[openai]
 
 ## Быстрый старт
 
-### 1. Реализация клиента
+### 1. Запрос `LLMRequest` и клиент
 
-Для работы брокера необходимо предоставить реализацию `LLMClientInterface`.
+Транспортный слой принимает `LLMRequest` (промпт, опционально `temperature`, `max_tokens`, `system_prompt`, `stop_sequences`, произвольные ключи провайдера в `extra`). Публичный метод `LLMBrokerService.generate` также принимает обычную строку — она оборачивается в `LLMRequest(prompt=...)`.
+
+Реализуйте `LLMClientInterface` или используйте встроенные адаптеры (опциональные зависимости `openai`, `anthropic`):
 
 ```python
-from llm_actor import LLMClientInterface
+from llm_actor import LLMClientInterface, LLMRequest
 import asyncio
 
 class MyLLMClient(LLMClientInterface):
-    async def generate_async(self, prompt: str) -> str:
-        # Ваш код обращения к API (без логики retry)
+    async def generate_async(self, request: LLMRequest) -> str:
         await asyncio.sleep(0.1)
-        return "Generated response"
+        return f"Echo: {request.prompt}"
 
     async def close(self) -> None:
         pass
+```
+
+Фабрики сервиса (маппинг ошибок провайдера в исключения брокера внутри адаптера):
+
+```python
+# pip install llm-actor[openai]
+service = LLMBrokerService.from_openai(api_key="...", model="gpt-4o")
+# OpenAI-compatible base_url (vLLM, LM Studio, …)
+service = LLMBrokerService.from_openai_compatible(
+    api_key="...", model="...", base_url="http://localhost:11434/v1"
+)
+# pip install anthropic
+service = LLMBrokerService.from_anthropic(api_key="...", model="claude-3-5-sonnet-20241022")
 ```
 
 ### 2. Запуск сервиса
@@ -58,7 +72,7 @@ class MyLLMClient(LLMClientInterface):
 ```python
 import asyncio
 from pydantic import BaseModel
-from llm_actor import LLMBrokerService, LLMBrokerSettings
+from llm_actor import LLMBrokerService, LLMBrokerSettings, LLMRequest
 
 class MyResponse(BaseModel):
     answer: str
@@ -76,15 +90,22 @@ async def main():
     await service.start()
     
     try:
-        # Обычный текстовый запрос с высоким приоритетом (по умолчанию 10)
         text = await service.generate("Расскажи шутку про Python", priority=0)
         print(f"Текст: {text}")
-        
-        # Запрос с валидацией через Pydantic (приоритет по умолчанию)
+
+        tuned = await service.generate(
+            LLMRequest(
+                prompt="Коротко: что такое asyncio?",
+                temperature=0.2,
+                system_prompt="Отвечай по-русски.",
+            )
+        )
+        print(tuned)
+
         obj = await service.generate(
-            "Извлеки данные: уверенность 0.9, ответ 'Привет'", 
+            "Извлеки данные: уверенность 0.9, ответ 'Привет'",
             response_model=MyResponse,
-            priority=5
+            priority=5,
         )
         print(f"Объект: {obj.answer} ({obj.confidence})")
         
@@ -102,9 +123,11 @@ if __name__ == "__main__":
 Сервис поддерживает эффективную параллельную обработку пачки запросов:
 
 ```python
+from llm_actor import LLMRequest
+
 requests = [
     ("Промпт 1", None),
-    ("Промпт 2", MyResponse),
+    (LLMRequest(prompt="Промпт 2", temperature=0.5), MyResponse),
     ("Промпт 3", None),
 ]
 results = await service.generate_batch(requests, priority=20)
@@ -164,7 +187,7 @@ mypy src
 
 Ниже приведен план развития `llm-actor` на ближайшее время:
 
-1.  **Провайдеры "из коробки"**: Реализация готовых клиентов для OpenAI, Anthropic, GigaChat и vLLM (Ollama), соответствующих `LLMClientInterface`. Пользователю больше не нужно будет писать свой транспортный слой.
+1.  **Провайдеры "из коробки"**: Адаптеры OpenAI, OpenAI-compatible и Anthropic уже входят в пакет (см. `LLMBrokerService.from_*`). Дополнительные вендоры и унификация GigaChat/vLLM — по мере необходимости.
 2.  **OpenTelemetry Tracing**: Интеграция глубокой трассировки запросов. Возможность видеть жизненный цикл задачи: "Очередь (wait time)" → "Акцепт актором" → "Сетевой запрос" → "Валидация" → "Завершение".
 3.  **Cost & Token Tracking**: Встроенный подсчет токенов и примерной стоимости каждого запроса на основе актуальных тарифов провайдеров. Экспорт статистики через метрики Prometheus.
 4.  **Priority Queuing Improvements**: Динамическая переприоритизация задач в очереди на основе их "возраста" (предотвращение голодания низкоприоритетных задач).

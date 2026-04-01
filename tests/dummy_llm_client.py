@@ -2,6 +2,7 @@ import asyncio
 import logging
 import random
 
+from llm_actor.core.request import LLMRequest
 from llm_actor.exceptions import (
     LLMServiceHTTPError,
     LLMServiceOverloadedError,
@@ -116,7 +117,8 @@ class DummyLLMClient:
 
         return None
 
-    async def generate_async(self, prompt: str) -> str:
+    async def generate_async(self, request: LLMRequest) -> str:
+        prompt = request.prompt
         error = self._should_fail(prompt)
         if error:
             raise error

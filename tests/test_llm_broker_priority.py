@@ -8,19 +8,20 @@ from llm_actor import LLMBrokerService, LLMBrokerSettings
 from llm_actor.actors.pool import _PrioritizedMessage
 from llm_actor.actors.worker import ModelActor
 from llm_actor.core.messages import ActorMessage
+from llm_actor.core.request import LLMRequest
 from tests.dummy_llm_client import DummyLLMClient
 
 
 def test_priority_field_default() -> None:
-    msg = ActorMessage(prompt="x")
+    msg = ActorMessage(request=LLMRequest(prompt="x"))
     assert msg.priority == 10
 
 
 def test_prioritized_message_ordering() -> None:
     items = [
-        _PrioritizedMessage(5, 0, ActorMessage(prompt="a")),
-        _PrioritizedMessage(0, 1, ActorMessage(prompt="b")),
-        _PrioritizedMessage(10, 2, ActorMessage(prompt="c")),
+        _PrioritizedMessage(5, 0, ActorMessage(request=LLMRequest(prompt="a"))),
+        _PrioritizedMessage(0, 1, ActorMessage(request=LLMRequest(prompt="b"))),
+        _PrioritizedMessage(10, 2, ActorMessage(request=LLMRequest(prompt="c"))),
     ]
     ordered = sorted(items)
     assert [p.priority for p in ordered] == [0, 5, 10]
@@ -28,9 +29,9 @@ def test_prioritized_message_ordering() -> None:
 
 def test_prioritized_message_fifo_within_same_priority() -> None:
     items = [
-        _PrioritizedMessage(1, 2, ActorMessage(prompt="a")),
-        _PrioritizedMessage(1, 0, ActorMessage(prompt="b")),
-        _PrioritizedMessage(1, 1, ActorMessage(prompt="c")),
+        _PrioritizedMessage(1, 2, ActorMessage(request=LLMRequest(prompt="a"))),
+        _PrioritizedMessage(1, 0, ActorMessage(request=LLMRequest(prompt="b"))),
+        _PrioritizedMessage(1, 1, ActorMessage(request=LLMRequest(prompt="c"))),
     ]
     ordered = sorted(items)
     assert [p.sequence for p in ordered] == [0, 1, 2]
@@ -49,7 +50,8 @@ async def test_high_priority_processed_before_low() -> None:
     start_event = asyncio.Event()
     call_order: list[str] = []
 
-    async def blocking_mock(self, prompt: str) -> str:
+    async def blocking_mock(self, request: LLMRequest) -> str:
+        prompt = request.prompt
         call_order.append(prompt)
         if prompt == "block":
             await start_event.wait()
@@ -108,7 +110,7 @@ async def test_ac5b_item_not_lost_when_get_and_stop_simultaneous() -> None:
     """AC 5b: если get_fut и stop_fut оба в done — элемент не теряется."""
     settings = LLMBrokerSettings()
     queue: asyncio.PriorityQueue[Any] = asyncio.PriorityQueue()
-    msg = ActorMessage(prompt="simultaneous")
+    msg = ActorMessage(request=LLMRequest(prompt="simultaneous"))
     item = _PrioritizedMessage(priority=10, sequence=0, message=msg)
     await queue.put(item)
 

@@ -7,6 +7,7 @@ from llm_actor.client.interface import (
 from llm_actor.client.llm import LLMClientWithCircuitBreaker, build_json_prompt
 from llm_actor.client.retry import LLMClientWithRetry
 from llm_actor.core.messages import ActorMessage
+from llm_actor.core.request import LLMRequest
 from llm_actor.exceptions import (
     ActorFailedError,
     CircuitBreakerOpenError,
@@ -15,6 +16,7 @@ from llm_actor.exceptions import (
     LLMServiceGeneralError,
     LLMServiceHTTPError,
     LLMServiceOverloadedError,
+    LLMServiceTimeoutError,
     LLMServiceUnavailableError,
     OverloadError,
     PoolShuttingDownError,
@@ -27,6 +29,7 @@ from llm_actor.settings import LLMBrokerSettings
 
 __all__ = [
     "ActorMessage",
+    "LLMRequest",
     "ActorFailedError",
     "BrokerLogger",
     "CircuitBreaker",
@@ -44,6 +47,7 @@ __all__ = [
     "LLMServiceGeneralError",
     "LLMServiceHTTPError",
     "LLMServiceOverloadedError",
+    "LLMServiceTimeoutError",
     "LLMServiceUnavailableError",
     "MetricsCollector",
     "ModelActor",

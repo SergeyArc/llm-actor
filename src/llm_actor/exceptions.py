@@ -60,6 +60,16 @@ class LLMServiceGeneralError(LLMServiceError):
         )
 
 
+class LLMServiceTimeoutError(LLMServiceError):
+    """Исключение при таймауте запроса к LLM."""
+
+    def __init__(self, message: str = "LLM request timed out"):
+        super().__init__(
+            message=message,
+            status_code=HTTPStatus.GATEWAY_TIMEOUT,
+        )
+
+
 class CircuitBreakerOpenError(LLMBrokerError):
     """Raised when circuit breaker is open"""
 

@@ -4,6 +4,7 @@ from unittest.mock import patch
 import pytest
 
 from llm_actor import LLMBrokerService, LLMBrokerSettings
+from llm_actor.core.request import LLMRequest
 from llm_actor.exceptions import (
     CircuitBreakerOpenError,
     LLMServiceOverloadedError,
@@ -36,9 +37,9 @@ async def test_overload_error_when_queue_full():
     settings.LLM_BATCH_SIZE = 1
     settings.LLM_BATCH_TIMEOUT = 10.0
 
-    async def slow_generate_async(self, prompt: str) -> str:
+    async def slow_generate_async(self, request: LLMRequest) -> str:
         await asyncio.sleep(2.0)
-        return f"Response for {prompt}"
+        return f"Response for {request.prompt}"
 
     with patch.object(DummyLLMClient, "generate_async", slow_generate_async):
         base_client = DummyLLMClient(settings=settings)

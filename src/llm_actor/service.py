@@ -8,12 +8,19 @@ from llm_actor.client.interface import (
 )
 from llm_actor.client.llm import LLMClientWithCircuitBreaker
 from llm_actor.client.retry import LLMClientWithRetry
+from llm_actor.core.request import LLMRequest
 from llm_actor.logger import BrokerLogger
 from llm_actor.metrics import MetricsCollector
 from llm_actor.resilience.circuit_breaker import CircuitBreaker
 from llm_actor.settings import LLMBrokerSettings
 
 T = TypeVar("T", bound=object)
+
+
+def _coerce_llm_request(prompt_or_request: str | LLMRequest) -> LLMRequest:
+    if isinstance(prompt_or_request, LLMRequest):
+        return prompt_or_request
+    return LLMRequest(prompt=prompt_or_request)
 
 
 class LLMBrokerService:
@@ -45,6 +52,54 @@ class LLMBrokerService:
         )
         self._logger = BrokerLogger.get_logger(name="llm_actor_service")
 
+    @classmethod
+    def from_openai(
+        cls,
+        *,
+        api_key: str,
+        model: str,
+        settings: LLMBrokerSettings | None = None,
+        metrics: MetricsCollector | None = None,
+        **client_options: Any,
+    ) -> "LLMBrokerService":
+        from llm_actor.client.adapters.openai import OpenAIAdapter
+
+        base = OpenAIAdapter(api_key=api_key, model=model, **client_options)
+        return cls(base_client=base, settings=settings, metrics=metrics)
+
+    @classmethod
+    def from_anthropic(
+        cls,
+        *,
+        api_key: str,
+        model: str,
+        settings: LLMBrokerSettings | None = None,
+        metrics: MetricsCollector | None = None,
+        **client_options: Any,
+    ) -> "LLMBrokerService":
+        from llm_actor.client.adapters.anthropic import AnthropicAdapter
+
+        base = AnthropicAdapter(api_key=api_key, model=model, **client_options)
+        return cls(base_client=base, settings=settings, metrics=metrics)
+
+    @classmethod
+    def from_openai_compatible(
+        cls,
+        *,
+        api_key: str,
+        model: str,
+        base_url: str,
+        settings: LLMBrokerSettings | None = None,
+        metrics: MetricsCollector | None = None,
+        **client_options: Any,
+    ) -> "LLMBrokerService":
+        from llm_actor.client.adapters.openai_compatible import OpenAICompatibleAdapter
+
+        base = OpenAICompatibleAdapter(
+            api_key=api_key, model=model, base_url=base_url, **client_options
+        )
+        return cls(base_client=base, settings=settings, metrics=metrics)
+
     @property
     def pool(self) -> SupervisedActorPool:
         """Доступ к пулу акторов для мониторинга (используется в тестах и API для get_health_status())."""
@@ -74,7 +129,7 @@ class LLMBrokerService:
     @overload
     async def generate(
         self,
-        prompt: str,
+        prompt: str | LLMRequest,
         response_model: None = None,
         *,
         priority: int = 10,
@@ -83,7 +138,7 @@ class LLMBrokerService:
     @overload
     async def generate(
         self,
-        prompt: str,
+        prompt: str | LLMRequest,
         response_model: type[T],
         *,
         priority: int = 10,
@@ -91,19 +146,20 @@ class LLMBrokerService:
 
     async def generate(
         self,
-        prompt: str,
+        prompt: str | LLMRequest,
         response_model: type[Any] | None = None,
         *,
         priority: int = 10,
     ) -> Any | str:
+        request = _coerce_llm_request(prompt)
         self._logger.debug(
             f"Processing generate request (response_model={'provided' if response_model else 'None'})"
         )
-        return await self._pool.generate(prompt, response_model, priority=priority)
+        return await self._pool.generate(request, response_model, priority=priority)
 
     async def generate_batch(
         self,
-        requests: list[tuple[str, type[Any] | None]],
+        requests: list[tuple[str | LLMRequest, type[Any] | None]],
         *,
         priority: int = 10,
     ) -> list[str | Any | Exception]:
@@ -111,7 +167,7 @@ class LLMBrokerService:
         Пакетная обработка запросов с параллельным выполнением.
 
         Args:
-            requests: Список кортежей (prompt, response_model)
+            requests: Список кортежей (промпт или LLMRequest, response_model)
 
         Returns:
             Список результатов. Каждый элемент может быть:
@@ -121,9 +177,11 @@ class LLMBrokerService:
         """
         self._logger.info(f"Processing batch of {len(requests)} requests")
         tasks = []
-        for prompt, response_model in requests:
-            self._logger.info(f"Request: prompt={prompt[:100]}..., response_model={response_model}")
-            tasks.append(self._pool.generate(prompt, response_model, priority=priority))
+        for item, response_model in requests:
+            req = _coerce_llm_request(item)
+            preview = req.prompt[:100] if req.prompt else ""
+            self._logger.info(f"Request: prompt={preview}..., response_model={response_model}")
+            tasks.append(self._pool.generate(req, response_model, priority=priority))
         results = await asyncio.gather(*tasks, return_exceptions=True)
         error_count = sum(1 for r in results if isinstance(r, Exception))
         if error_count > 0:

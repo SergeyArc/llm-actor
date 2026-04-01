@@ -8,9 +8,11 @@ from llm_actor import LLMBrokerService, LLMBrokerSettings
 from llm_actor.client.interface import LLMClientWithCircuitBreakerInterface
 from llm_actor.client.llm import LLMClientWithCircuitBreaker
 from llm_actor.client.retry import LLMClientWithRetry
+from llm_actor.core.request import LLMRequest
 from llm_actor.exceptions import (
     LLMServiceHTTPError,
     LLMServiceOverloadedError,
+    LLMServiceTimeoutError,
     LLMServiceUnavailableError,
 )
 from llm_actor.resilience.circuit_breaker import CircuitBreaker
@@ -32,7 +34,7 @@ async def test_retry_succeeds_after_transient_error():
     cb_client = cast(LLMClientWithCircuitBreakerInterface, LLMClientWithCircuitBreaker(base_client, circuit_breaker))
     retry_client = LLMClientWithRetry(cb_client, settings)
 
-    result = await retry_client.generate("test")
+    result = await retry_client.generate(LLMRequest(prompt="test"))
 
     assert result == "Response for: test"
     assert base_client.prompt_call_counts["test"] == 2
@@ -65,7 +67,7 @@ async def test_retry_exponential_backoff():
         await original_sleep(0.01)
 
     with patch("asyncio.sleep", mock_sleep):
-        result = await retry_client.generate("test")
+        result = await retry_client.generate(LLMRequest(prompt="test"))
 
     assert result == "Response for: test"
     assert base_client.prompt_call_counts["test"] == 4
@@ -103,7 +105,7 @@ async def test_retry_backoff_cap():
         await original_sleep(0.01)
 
     with patch("asyncio.sleep", mock_sleep):
-        result = await retry_client.generate("test")
+        result = await retry_client.generate(LLMRequest(prompt="test"))
 
     assert result == "Response for: test"
     retry_sleeps = [s for s in sleep_times if s >= 0.5]
@@ -129,7 +131,7 @@ async def test_retry_fails_after_max_attempts():
     retry_client = LLMClientWithRetry(cb_client, settings)
 
     with pytest.raises(LLMServiceOverloadedError):
-        await retry_client.generate("test")
+        await retry_client.generate(LLMRequest(prompt="test"))
 
     assert base_client.prompt_call_counts["test"] == 3
 
@@ -148,7 +150,7 @@ async def test_retry_handles_503_error():
     cb_client = cast(LLMClientWithCircuitBreakerInterface, LLMClientWithCircuitBreaker(base_client, circuit_breaker))
     retry_client = LLMClientWithRetry(cb_client, settings)
 
-    result = await retry_client.generate("test")
+    result = await retry_client.generate(LLMRequest(prompt="test"))
 
     assert result == "Response for: test"
     assert base_client.prompt_call_counts["test"] == 2
@@ -169,27 +171,27 @@ async def test_retry_handles_502_504_errors():
         cb_client = cast(LLMClientWithCircuitBreakerInterface, LLMClientWithCircuitBreaker(base_client, circuit_breaker))
         retry_client = LLMClientWithRetry(cb_client, settings)
 
-        result = await retry_client.generate("test")
+        result = await retry_client.generate(LLMRequest(prompt="test"))
 
         assert result == "Response for: test"
         assert base_client.prompt_call_counts["test"] == 2
 
 
-async def test_retry_handles_timeout_error():
-    """Тест обработки asyncio.TimeoutError."""
+async def test_retry_handles_llm_service_timeout_error():
+    """Тест retry при LLMServiceTimeoutError."""
     settings = LLMBrokerSettings()
     settings.LLM_RETRY_MAX_ATTEMPTS = 3
     settings.LLM_RETRY_BASE_BACKOFF = 0.01
 
     base_client = DummyLLMClient(settings=settings)
     base_client.set_prompt_errors("test", [
-        TimeoutError("Request timeout"),
+        LLMServiceTimeoutError("Request timeout"),
     ])
     circuit_breaker = CircuitBreaker(settings=settings)
     cb_client = cast(LLMClientWithCircuitBreakerInterface, LLMClientWithCircuitBreaker(base_client, circuit_breaker))
     retry_client = LLMClientWithRetry(cb_client, settings)
 
-    result = await retry_client.generate("test")
+    result = await retry_client.generate(LLMRequest(prompt="test"))
 
     assert result == "Response for: test"
     assert base_client.prompt_call_counts["test"] == 2
@@ -207,7 +209,7 @@ async def test_retry_does_not_retry_non_transient_errors():
     retry_client = LLMClientWithRetry(cb_client, settings)
 
     with pytest.raises(LLMServiceHTTPError):
-        await retry_client.generate("test")
+        await retry_client.generate(LLMRequest(prompt="test"))
 
     assert base_client.prompt_call_counts["test"] == 1
 

@@ -15,6 +15,7 @@ from llm_actor.client.llm import (
     build_json_prompt,
 )
 from llm_actor.core.messages import ActorMessage
+from llm_actor.core.request import LLMRequest
 from llm_actor.exceptions import ActorFailedError
 from llm_actor.resilience.circuit_breaker import CircuitBreaker
 from tests.models import User
@@ -50,7 +51,7 @@ async def test_semantic_retry_succeeds_on_second_attempt() -> None:
         circuit_breaker=CircuitBreaker(settings=settings),
         max_validation_attempts=settings.LLM_VALIDATION_RETRY_MAX_ATTEMPTS,
     )
-    result = await client.generate("get user", response_model=User)
+    result = await client.generate(LLMRequest(prompt="get user"), response_model=User)
     assert result.name == "Alice"
     assert result.age == 30
     assert mock_base_client.generate_async.call_count == 2
@@ -66,7 +67,7 @@ async def test_semantic_retry_exhausts_all_max_attempts() -> None:
         max_validation_attempts=settings.LLM_VALIDATION_RETRY_MAX_ATTEMPTS,
     )
     with pytest.raises(json.JSONDecodeError):
-        await client.generate("get user", response_model=User)
+        await client.generate(LLMRequest(prompt="get user"), response_model=User)
     assert mock_base_client.generate_async.call_count == 3
 
 
@@ -126,7 +127,7 @@ async def test_actor_raises_actor_failed_error_at_threshold():
 
         loop = asyncio.get_running_loop()
         future: asyncio.Future[str] = loop.create_future()
-        msg = ActorMessage(prompt="fail", future=future)
+        msg = ActorMessage(request=LLMRequest(prompt="fail"), future=future)
         await shared_queue.put(
             _PrioritizedMessage(priority=msg.priority, sequence=0, message=msg)
         )
@@ -159,7 +160,7 @@ async def test_pool_requeues_pending_messages_on_actor_restart():
 
     loop = asyncio.get_running_loop()
     future: asyncio.Future[str] = loop.create_future()
-    msg = ActorMessage(prompt="requeue-me", future=future)
+    msg = ActorMessage(request=LLMRequest(prompt="requeue-me"), future=future)
 
     failed_exc = ActorFailedError(
         message="forced",

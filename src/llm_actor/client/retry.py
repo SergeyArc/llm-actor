@@ -4,9 +4,11 @@ from typing import Any
 from llm_actor.client.interface import (
     LLMClientWithCircuitBreakerInterface,
 )
+from llm_actor.core.request import LLMRequest
 from llm_actor.exceptions import (
     LLMServiceHTTPError,
     LLMServiceOverloadedError,
+    LLMServiceTimeoutError,
     LLMServiceUnavailableError,
 )
 from llm_actor.logger import BrokerLogger
@@ -27,12 +29,14 @@ def _is_transient_error(exc: Exception) -> bool:
         return True
     if isinstance(exc, LLMServiceUnavailableError):
         return True
-    if isinstance(exc, asyncio.TimeoutError):
+    if isinstance(exc, LLMServiceTimeoutError):
         return True
     if isinstance(exc, LLMServiceHTTPError):
         transient_status_codes = {502, 503, 504}
         return exc.status_code in transient_status_codes
     return False
+
+
 class LLMClientWithRetry:
     """
     Транспортная обертка над LLM клиентом с retry для transient API ошибок.
@@ -51,12 +55,14 @@ class LLMClientWithRetry:
         self._backoff_cap = settings.LLM_RETRY_BACKOFF_CAP
         self._logger = BrokerLogger.get_logger(name="llm_client_retry")
 
-    async def generate(self, prompt: str, response_model: type[Any] | None = None) -> Any | str:
+    async def generate(
+        self, request: LLMRequest, response_model: type[Any] | None = None
+    ) -> Any | str:
         """
         Генерирует ответ от LLM с автоматическими повторами при transient API ошибках.
 
         Args:
-            prompt: Текст промпта для генерации
+            request: Параметры генерации
             response_model: Опциональная Pydantic модель для валидации ответа
 
         Returns:
@@ -65,14 +71,14 @@ class LLMClientWithRetry:
         Raises:
             Exception: При ошибках после исчерпания попыток
         """
-        return await self._generate_with_transport_retry(prompt, response_model)
+        return await self._generate_with_transport_retry(request, response_model)
 
     async def _generate_with_transport_retry(
-        self, prompt: str, response_model: type[Any] | None = None
+        self, request: LLMRequest, response_model: type[Any] | None = None
     ) -> Any | str:
         for api_attempt in range(1, self._max_attempts + 1):
             try:
-                return await self._client.generate(prompt, response_model)
+                return await self._client.generate(request, response_model)
             except Exception as exc:
                 if not _is_transient_error(exc):
                     self._logger.debug(f"Non-retryable error: {type(exc).__name__}: {exc}")

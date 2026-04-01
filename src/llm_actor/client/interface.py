@@ -1,5 +1,7 @@
 from typing import Any, Protocol, runtime_checkable
 
+from llm_actor.core.request import LLMRequest
+
 
 @runtime_checkable
 class LLMClientInterface(Protocol):
@@ -14,21 +16,21 @@ class LLMClientInterface(Protocol):
     - LLMServiceOverloadedError (429) - при перегрузке API
     - LLMServiceUnavailableError (503) - при недоступности сервиса
     - LLMServiceHTTPError (502, 503, 504) - при сетевых ошибках
-    - asyncio.TimeoutError - при таймаутах
+    - LLMServiceTimeoutError - при таймаутах транспорта к LLM
 
     Эти ошибки будут автоматически обработаны retry wrapper (LLMClientWithRetry)
     с применением exponential backoff на уровне брокера.
     """
 
-    async def generate_async(self, prompt: str) -> str:
+    async def generate_async(self, request: LLMRequest) -> str:
         """
-        Генерирует ответ от LLM на основе промпта.
+        Генерирует ответ от LLM на основе запроса.
 
         Внешние клиенты должны выполнять один HTTP-запрос к LLM API без retry логики.
         Retry механизм обеспечивается брокером.
 
         Args:
-            prompt: Текст промпта для генерации
+            request: Параметры генерации (промпт, температура, extra и т.д.)
 
         Returns:
             Строка с ответом от LLM (не None)
@@ -52,13 +54,13 @@ class LLMClientWithCircuitBreakerInterface(Protocol):
     """
 
     async def generate(
-        self, prompt: str, response_model: type[Any] | None = None
+        self, request: LLMRequest, response_model: type[Any] | None = None
     ) -> Any | str:
         """
-        Генерирует ответ от LLM на основе промпта с поддержкой валидации через Pydantic.
+        Генерирует ответ от LLM на основе запроса с поддержкой валидации через Pydantic.
 
         Args:
-            prompt: Текст промпта для генерации
+            request: Параметры генерации
             response_model: Опциональная Pydantic модель для валидации ответа
 
         Returns:

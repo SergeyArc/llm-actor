@@ -5,12 +5,14 @@ import pytest
 import pytest_asyncio
 from prometheus_client import CollectorRegistry
 
-from llm_actor import LLMBrokerService, LLMBrokerSettings
+from llm_actor import LLMBrokerService
 from llm_actor.actors.pool import SupervisedActorPool, _PrioritizedMessage
 from llm_actor.actors.worker import ModelActor
 from llm_actor.core.messages import ActorMessage
+from llm_actor.core.request import LLMRequest
 from llm_actor.exceptions import ActorFailedError
 from llm_actor.metrics import MetricsCollector
+from llm_actor.settings import LLMBrokerSettings
 from tests.dummy_llm_client import DummyLLMClient
 
 
@@ -78,7 +80,7 @@ async def test_batches_failed_counter_increments_when_process_batch_raises() -> 
         try:
             loop = asyncio.get_running_loop()
             future: asyncio.Future[str] = loop.create_future()
-            msg = ActorMessage(prompt="fail-batch", future=future)
+            msg = ActorMessage(request=LLMRequest(prompt="fail-batch"), future=future)
             await queue.put(_PrioritizedMessage(priority=10, sequence=0, message=msg))
 
             with pytest.raises(RuntimeError, match="forced"):
@@ -144,7 +146,7 @@ async def test_actor_restarts_counter_increments(
 
     loop = asyncio.get_running_loop()
     future: asyncio.Future[str] = loop.create_future()
-    msg = ActorMessage(prompt="requeue-metrics", future=future)
+    msg = ActorMessage(request=LLMRequest(prompt="requeue-metrics"), future=future)
     failed_exc = ActorFailedError(
         message="forced",
         actor_id="actor-0",

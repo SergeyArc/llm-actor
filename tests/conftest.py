@@ -6,6 +6,7 @@ import pytest_asyncio
 from prometheus_client import REGISTRY
 
 from llm_actor import LLMBrokerService
+from llm_actor.core.request import LLMRequest
 from tests.dummy_llm_client import DummyLLMClient
 
 
@@ -31,7 +32,8 @@ def mock_llm_responses():
 def mock_llm_response(mock_llm_responses):
     """Фикстура для мокирования DummyLLMClient.generate_async с сохранением реалистичных задержек."""
 
-    async def mock_generate_async(self, prompt: str) -> str:
+    async def mock_generate_async(self, request: LLMRequest) -> str:
+        prompt = request.prompt
         response_text = f"Response for: {prompt}"
         response = None
         if prompt in mock_llm_responses:
