@@ -3,9 +3,9 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "llm-broker"
+name = "llm-actor"
 version = "0.1.0"
-description = "LLM broker: actor pool, circuit breaker, retries, metrics"
+description = "LLM actor: pool, circuit breaker, retries, metrics"
 readme = "README.md"
 requires-python = ">=3.13,<3.14"
 dependencies = [
@@ -28,10 +28,10 @@ dev = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/llm_broker"]
+packages = ["src/llm_actor"]
 
 [tool.hatch.build.targets.sdist]
-include = ["src/llm_broker"]
+include = ["src/llm_actor"]
 
 [tool.ruff]
 line-length = 100
@@ -57,6 +57,8 @@ line-ending = "lf"
 
 [tool.mypy]
 python_version = "3.13"
+mypy_path = "src"
+files = ["src"]
 check_untyped_defs = true
 disallow_any_generics = true
 disallow_incomplete_defs = true
@@ -70,10 +72,6 @@ strict_equality = true
 show_error_codes = true
 disallow_any_unimported = true
 plugins = ["pydantic.mypy"]
-
-[[tool.mypy.overrides]]
-module = "tests.*"
-disallow_untyped_defs = false
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

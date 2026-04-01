@@ -3,8 +3,8 @@ from unittest.mock import patch
 
 import pytest
 
-from llm_broker import LLMBrokerService, LLMBrokerSettings
-from llm_broker.exceptions import (
+from llm_actor import LLMBrokerService, LLMBrokerSettings
+from llm_actor.exceptions import (
     CircuitBreakerOpenError,
     LLMServiceOverloadedError,
     OverloadError,
@@ -16,10 +16,10 @@ async def test_circuit_breaker_opens_after_threshold(service, mock_llm_response)
     """Тест открытия circuit breaker после превышения порога ошибок."""
     failure_prompt = "failure"
     for i in range(6):
-        mock_llm_response[f"{failure_prompt}_{i}"] = Exception(f"Error {i}")
+        mock_llm_response[f"{failure_prompt}_{i}"] = RuntimeError(f"Error {i}")
 
     for i in range(5):
-        with pytest.raises(Exception):
+        with pytest.raises(RuntimeError):
             await service.generate(f"{failure_prompt}_{i}")
 
     await asyncio.sleep(0.1)

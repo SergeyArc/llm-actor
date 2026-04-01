@@ -3,7 +3,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class LLMBrokerSettings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="", case_sensitive=True)
+    model_config = SettingsConfigDict(env_prefix="", case_sensitive=True, extra="ignore")
 
     LLM_FAILURE_THRESHOLD: int = 5
     LLM_RECOVERY_TIMEOUT: float = 60.0
@@ -15,7 +15,6 @@ class LLMBrokerSettings(BaseSettings):
     LLM_NUM_ACTORS: int = 10
     LLM_MAX_RESTARTS: int = 10
     LLM_RESTART_WINDOW: float = 60.0
-    LLM_FAILURE_RATE: float = 0.0
     LLM_GRACEFUL_SHUTDOWN_TIMEOUT: float = 30.0
     LLM_RETRY_MAX_ATTEMPTS: int = 3
     LLM_RETRY_BASE_BACKOFF: float = 1.0
@@ -46,9 +45,3 @@ class LLMBrokerSettings(BaseSettings):
             raise ValueError(f"Value must be > 0, got {v}")
         return v
 
-    @field_validator("LLM_FAILURE_RATE")
-    @classmethod
-    def must_be_valid_rate(cls, v: float) -> float:
-        if not 0.0 <= v <= 1.0:
-            raise ValueError(f"Rate must be in [0.0, 1.0], got {v}")
-        return v

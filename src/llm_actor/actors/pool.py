@@ -4,13 +4,13 @@ from dataclasses import dataclass
 from typing import Any, TypeVar, overload
 from uuid import uuid4
 
-from llm_broker.actors.worker import ModelActor
-from llm_broker.client.interface import LLMClientWithCircuitBreakerInterface
-from llm_broker.core.messages import ActorMessage
-from llm_broker.exceptions import PoolShuttingDownError
-from llm_broker.logger import BrokerLogger
-from llm_broker.metrics import MetricsCollector
-from llm_broker.settings import LLMBrokerSettings
+from llm_actor.actors.worker import ModelActor
+from llm_actor.client.interface import LLMClientWithCircuitBreakerInterface
+from llm_actor.core.messages import ActorMessage
+from llm_actor.exceptions import ActorFailedError, PoolShuttingDownError
+from llm_actor.logger import BrokerLogger
+from llm_actor.metrics import MetricsCollector
+from llm_actor.settings import LLMBrokerSettings
 
 T = TypeVar("T", bound=object)
 
@@ -80,29 +80,7 @@ class SupervisedActorPool:
         while self._running:
             try:
                 await asyncio.sleep(1.0)
-
-                for i, (actor, task) in enumerate(
-                    zip(self._actors, self._actor_tasks, strict=True)
-                ):
-                    if task.done():
-                        try:
-                            exception = task.exception()
-                        except asyncio.CancelledError:
-                            exception = None
-
-                        log = self._logger.bind(actor_id=actor.actor_id)
-                        if exception:
-                            log.error(f"Actor crashed: {exception}", exc_info=exception)
-                        else:
-                            log.warning("Actor task completed unexpectedly")
-
-                        if self._should_restart(i):
-                            await self._restart_actor(i)
-                        else:
-                            log.critical(
-                                f"Actor exceeded restart limit ({self._max_restarts} in {self._restart_window}s), "
-                                f"not restarting"
-                            )
+                await self._check_actor_tasks()
             except asyncio.CancelledError:
                 break
             except Exception as e:
@@ -115,6 +93,71 @@ class SupervisedActorPool:
                     await asyncio.sleep(5.0)
                 except asyncio.CancelledError:
                     break
+
+    async def _check_actor_tasks(self) -> None:
+        for actor_index, (actor, task) in enumerate(
+            zip(self._actors, self._actor_tasks, strict=True)
+        ):
+            if not task.done():
+                continue
+
+            pending_messages = self._extract_pending_from_task_exception(actor, task)
+            if self._should_restart(actor_index):
+                try:
+                    await self._restart_actor(actor_index)
+                    if pending_messages:
+                        await self._requeue_pending_messages(pending_messages)
+                except Exception as exc:
+                    log = self._logger.bind(actor_id=actor.actor_id)
+                    log.error(
+                        f"Failed to restart actor, failing {len(pending_messages)} pending messages: {exc}",
+                        exc_info=True,
+                    )
+                    self._fail_pending_messages(pending_messages, exc)
+                continue
+
+            log = self._logger.bind(actor_id=actor.actor_id)
+            log.critical(
+                f"Actor exceeded restart limit ({self._max_restarts} in {self._restart_window}s), "
+                "not restarting"
+            )
+            self._fail_pending_messages(
+                pending_messages,
+                RuntimeError(f"Actor {actor.actor_id} exceeded restart limit, cannot recover messages"),
+            )
+
+    def _extract_pending_from_task_exception(
+        self,
+        actor: ModelActor,
+        task: asyncio.Task[None],
+    ) -> list[ActorMessage[Any]]:
+        try:
+            exception = task.exception()
+        except asyncio.CancelledError:
+            exception = None
+
+        log = self._logger.bind(actor_id=actor.actor_id)
+        if exception is None:
+            log.warning("Actor task completed unexpectedly")
+            return []
+
+        if isinstance(exception, ActorFailedError):
+            log.error(f"Actor failed and requested restart: {exception}", exc_info=exception)
+            return list(exception.pending_messages)
+
+        log.error(f"Actor crashed: {exception}", exc_info=exception)
+        # Drain inbox to recover unprocessed messages from the crashed actor.
+        inbox_messages: list[ActorMessage[Any]] = []
+        while not actor.inbox.empty():
+            try:
+                msg = actor.inbox.get_nowait()
+                if msg is not None:  # None is the stop signal
+                    inbox_messages.append(msg)
+            except asyncio.QueueEmpty:
+                break
+        if inbox_messages:
+            log.warning(f"Recovered {len(inbox_messages)} unprocessed messages from crashed actor inbox")
+        return inbox_messages
 
     def _should_restart(self, actor_index: int) -> bool:
         """Check if actor should be restarted based on restart policy.
@@ -166,6 +209,30 @@ class SupervisedActorPool:
 
         log = self._logger.bind(actor_id=new_actor.actor_id, actor_index=actor_index)
         log.info("Actor restarted successfully")
+
+    async def _requeue_pending_messages(
+        self, pending_messages: list[ActorMessage[Any]]
+    ) -> None:
+        for message in pending_messages:
+            try:
+                await self.send(message)
+            except Exception as exc:
+                if message.future and not message.future.done():
+                    message.future.set_exception(exc)
+                else:
+                    self._logger.error(
+                        f"Failed to requeue message {message.id} and cannot signal future: {exc}",
+                        exc_info=True,
+                    )
+
+    def _fail_pending_messages(
+        self,
+        pending_messages: list[ActorMessage[Any]],
+        error: Exception,
+    ) -> None:
+        for message in pending_messages:
+            if message.future and not message.future.done():
+                message.future.set_exception(error)
 
     def _select_next_actor(self) -> ModelActor | None:
         """Select next actor using round-robin strategy, skipping dead actors"""
@@ -244,6 +311,9 @@ class SupervisedActorPool:
         except Exception as exc:
             if not future.done():
                 future.set_exception(exc)
+                # Suppress asyncio "Future exception was never retrieved" warning —
+                # the caller receives the exception via `raise` below, not via `await future`.
+                future.exception()
             raise
 
         return await future

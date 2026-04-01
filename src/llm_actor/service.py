@@ -1,17 +1,17 @@
 import asyncio
 from typing import Any, TypeVar, cast, overload
 
-from llm_broker.actors.pool import SupervisedActorPool
-from llm_broker.client.interface import (
+from llm_actor.actors.pool import SupervisedActorPool
+from llm_actor.client.interface import (
     LLMClientInterface,
     LLMClientWithCircuitBreakerInterface,
 )
-from llm_broker.client.llm import LLMClientWithCircuitBreaker
-from llm_broker.client.retry import LLMClientWithRetry
-from llm_broker.logger import BrokerLogger
-from llm_broker.metrics import MetricsCollector
-from llm_broker.resilience.circuit_breaker import CircuitBreaker
-from llm_broker.settings import LLMBrokerSettings
+from llm_actor.client.llm import LLMClientWithCircuitBreaker
+from llm_actor.client.retry import LLMClientWithRetry
+from llm_actor.logger import BrokerLogger
+from llm_actor.metrics import MetricsCollector
+from llm_actor.resilience.circuit_breaker import CircuitBreaker
+from llm_actor.settings import LLMBrokerSettings
 
 T = TypeVar("T", bound=object)
 
@@ -30,7 +30,11 @@ class LLMBrokerService:
         circuit_breaker = CircuitBreaker(settings=self._settings, metrics=self._metrics)
         cb_client = cast(
             LLMClientWithCircuitBreakerInterface,
-            LLMClientWithCircuitBreaker(base_client, circuit_breaker),
+            LLMClientWithCircuitBreaker(
+                base_client,
+                circuit_breaker,
+                max_validation_attempts=self._settings.LLM_VALIDATION_RETRY_MAX_ATTEMPTS,
+            ),
         )
         self._client: LLMClientWithCircuitBreakerInterface = LLMClientWithRetry(
             cb_client, self._settings
@@ -39,7 +43,7 @@ class LLMBrokerService:
         self._pool = SupervisedActorPool(
             client=self._client, settings=self._settings, metrics=self._metrics
         )
-        self._logger = BrokerLogger.get_logger(name="llm_broker_service")
+        self._logger = BrokerLogger.get_logger(name="llm_actor_service")
 
     @property
     def pool(self) -> SupervisedActorPool:

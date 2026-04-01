@@ -2,8 +2,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from llm_broker import LLMBrokerService, LLMBrokerSettings
-from llm_broker.exceptions import PoolShuttingDownError
+from llm_actor import LLMBrokerService, LLMBrokerSettings
+from llm_actor.exceptions import PoolShuttingDownError
 from tests.dummy_llm_client import DummyLLMClient
 
 

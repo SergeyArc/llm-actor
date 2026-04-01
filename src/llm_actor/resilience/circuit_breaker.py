@@ -3,10 +3,10 @@ import time
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from llm_broker.exceptions import CircuitBreakerOpenError
-from llm_broker.logger import BrokerLogger
-from llm_broker.metrics import MetricsCollector
-from llm_broker.settings import LLMBrokerSettings
+from llm_actor.exceptions import CircuitBreakerOpenError
+from llm_actor.logger import BrokerLogger
+from llm_actor.metrics import MetricsCollector
+from llm_actor.settings import LLMBrokerSettings
 
 
 class CircuitBreaker:

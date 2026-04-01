@@ -2,12 +2,11 @@ import asyncio
 import logging
 import random
 
-from llm_broker.exceptions import (
-    LLMServiceError,
+from llm_actor.exceptions import (
     LLMServiceHTTPError,
     LLMServiceOverloadedError,
 )
-from llm_broker.settings import LLMBrokerSettings
+from llm_actor.settings import LLMBrokerSettings
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +15,6 @@ class DummyLLMClient:
     """stub LLM клиент для тестирования, имитирующий поведение реального LLM-клиента."""
 
     def __init__(self, settings: LLMBrokerSettings) -> None:
-        self.failure_rate = settings.LLM_FAILURE_RATE
         self.call_count = 0
 
         self.base_latency = getattr(settings, "DUMMY_BASE_LATENCY", 0.05)
@@ -81,10 +79,6 @@ class DummyLLMClient:
             if random.random() < self.http_error_rate:
                 status_code = random.choice([400, 401, 403, 500, 502, 503])
                 return LLMServiceHTTPError("Simulated HTTP error", status_code=status_code)
-
-        if self.failure_rate > 0:
-            if random.random() < self.failure_rate:
-                return LLMServiceError("Simulated API failure")
 
         return None
 

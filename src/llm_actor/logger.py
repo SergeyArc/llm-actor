@@ -5,7 +5,7 @@ from loguru import logger
 
 
 class BrokerLogger:
-    """Централизованный логгер для пакета llm_broker на основе loguru."""
+    """Централизованный логгер для пакета llm_actor на основе loguru."""
 
     _configured = False
 
@@ -15,7 +15,7 @@ class BrokerLogger:
         level: str = "INFO",
     ) -> None:
         """
-        Добавляет обработчик loguru для llm_broker.
+        Добавляет обработчик loguru для llm_actor.
 
         Не удаляет существующие обработчики приложения-хоста.
         Если нужно заменить все обработчики — вызови ``logger.remove()``

@@ -1,5 +1,15 @@
-import pytest
+import asyncio
+import json
+from unittest.mock import AsyncMock
 
+import pytest
+from pydantic import ValidationError
+
+from llm_actor import LLMBrokerSettings
+from llm_actor.actors.worker import ModelActor
+from llm_actor.client.llm import _strip_schema_descriptions, build_json_prompt
+from llm_actor.core.messages import ActorMessage
+from llm_actor.exceptions import ActorFailedError
 from tests.models import User
 
 
@@ -8,7 +18,7 @@ async def test_ask_with_invalid_json_response_model(service, mock_llm_response):
     prompt = "invalid_json"
     mock_llm_response[prompt] = "not a json string"
 
-    with pytest.raises(ValueError, match="Failed to parse JSON"):
+    with pytest.raises(json.JSONDecodeError):
         await service.generate(prompt, response_model=User)
 
 
@@ -17,5 +27,111 @@ async def test_ask_with_mismatched_json_structure(service, mock_llm_response):
     prompt = "mismatched_json"
     mock_llm_response[prompt] = '{"name": "Alice"}'
 
-    with pytest.raises(ValueError, match="Validation failed"):
+    with pytest.raises(ValidationError):
         await service.generate(prompt, response_model=User)
+
+
+def test_build_json_prompt_strips_description_fields():
+    prompt = "Сгенерируй пользователя"
+    prompt_with_schema = build_json_prompt(prompt, User)
+
+    assert prompt in prompt_with_schema
+    assert '"description"' not in prompt_with_schema
+    assert '"properties"' in prompt_with_schema
+
+
+def test_build_json_prompt_contains_exact_json_dumps_schema():
+    """AC-4: prompt contains precisely json.dumps(schema) with correct separators."""
+    prompt = "Сгенерируй пользователя"
+    prompt_with_schema = build_json_prompt(prompt, User)
+
+    cleaned = _strip_schema_descriptions(User.model_json_schema())
+    expected_schema_str = json.dumps(cleaned, ensure_ascii=False, separators=(",", ":"))
+    assert expected_schema_str in prompt_with_schema
+
+
+def test_settings_ignores_llm_failure_rate_env_var(monkeypatch):
+    """AC-3: LLM_FAILURE_RATE present in environment does not raise on settings load."""
+    monkeypatch.setenv("LLM_FAILURE_RATE", "0.5")
+    settings = LLMBrokerSettings()
+    assert settings is not None
+
+
+@pytest.mark.asyncio
+async def test_actor_raises_actor_failed_error_at_threshold():
+    """AC-2: ActorFailedError is raised when consecutive failure threshold is exceeded.
+
+    _process_batch uses gather(return_exceptions=True) so individual client errors don't
+    propagate to _safe_process_batch. We patch _process_batch directly to raise a
+    batch-level error, which IS what increments _consecutive_failures.
+    """
+    from unittest.mock import patch
+
+    settings = LLMBrokerSettings(LLM_MAX_CONSECUTIVE_FAILURES=1, LLM_BATCH_SIZE=1)
+    mock_client = AsyncMock()
+
+    actor = ModelActor(client=mock_client, actor_id="test-actor", settings=settings)
+
+    batch_error = RuntimeError("Forced batch failure")
+
+    with patch.object(actor, "_process_batch", new=AsyncMock(side_effect=batch_error)):
+        await actor.start()
+
+        loop = asyncio.get_running_loop()
+        future: asyncio.Future[str] = loop.create_future()
+        msg = ActorMessage(prompt="fail", future=future)
+        await actor.send(msg)
+
+        with pytest.raises(ActorFailedError):
+            await actor._task  # type: ignore[misc]
+
+    exc = actor._task.exception()  # type: ignore[union-attr]
+    assert isinstance(exc, ActorFailedError)
+    assert exc.actor_id == "test-actor"
+    assert msg in exc.pending_messages
+
+
+@pytest.mark.asyncio
+async def test_pool_requeues_pending_messages_on_actor_restart():
+    """AC-2: Pending messages from ActorFailedError are returned to the pool queue."""
+    from llm_actor.actors.pool import SupervisedActorPool
+
+    settings = LLMBrokerSettings(
+        LLM_NUM_ACTORS=1,
+        LLM_MAX_CONSECUTIVE_FAILURES=1,
+        LLM_BATCH_SIZE=1,
+        LLM_BATCH_TIMEOUT=0.01,
+    )
+    mock_client = AsyncMock()
+    mock_client.generate.return_value = "ok"
+
+    pool = SupervisedActorPool(client=mock_client, settings=settings)
+    await pool.start()
+
+    loop = asyncio.get_running_loop()
+    future: asyncio.Future[str] = loop.create_future()
+    msg = ActorMessage(prompt="requeue-me", future=future)
+
+    failed_exc = ActorFailedError(
+        message="forced",
+        actor_id="actor-0",
+        pending_messages=[msg],
+    )
+
+    try:
+        # Replace actor's task with one that raises ActorFailedError
+        pool._actor_tasks[0] = loop.create_task(_raise_exc(failed_exc))
+        await asyncio.sleep(0.05)  # let the fake task complete
+
+        # Directly trigger supervisor check — restarts actor and requeues msg
+        await pool._check_actor_tasks()
+
+        # Give the new actor time to process the requeued message
+        result = await asyncio.wait_for(future, timeout=3.0)
+        assert result == "ok"
+    finally:
+        await pool.stop()
+
+
+async def _raise_exc(exc: Exception) -> None:
+    raise exc

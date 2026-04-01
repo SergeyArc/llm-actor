@@ -1,8 +1,6 @@
 import asyncio
 import time
 
-import pytest
-
 
 async def test_high_load_parallel_requests(service, mock_llm_response):
     """Тест обработки большого количества параллельных запросов."""

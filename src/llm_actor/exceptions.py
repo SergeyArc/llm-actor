@@ -1,8 +1,14 @@
+from __future__ import annotations
+
 from http import HTTPStatus
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from llm_actor.core.messages import ActorMessage
 
 
 class LLMBrokerError(Exception):
-    """Базовое исключение для всех ошибок пакета llm_broker."""
+    """Базовое исключение для всех ошибок пакета llm_actor."""
 
 
 class LLMServiceError(LLMBrokerError):
@@ -70,3 +76,17 @@ class PoolShuttingDownError(LLMBrokerError):
     """Raised when pool is shutting down"""
 
     pass
+
+
+class ActorFailedError(LLMBrokerError):
+    """Raised when actor exceeded failure threshold and must be restarted."""
+
+    def __init__(
+        self,
+        message: str,
+        actor_id: str,
+        pending_messages: list[ActorMessage[Any]] | None = None,
+    ) -> None:
+        self.actor_id = actor_id
+        self.pending_messages: list[ActorMessage[Any]] = pending_messages or []
+        super().__init__(message)

@@ -5,7 +5,7 @@ import pytest
 import pytest_asyncio
 from prometheus_client import REGISTRY
 
-from llm_broker import LLMBrokerService
+from llm_actor import LLMBrokerService
 from tests.dummy_llm_client import DummyLLMClient
 
 
@@ -33,8 +33,17 @@ def mock_llm_response(mock_llm_responses):
 
     async def mock_generate_async(self, prompt: str) -> str:
         response_text = f"Response for: {prompt}"
+        response = None
         if prompt in mock_llm_responses:
             response = mock_llm_responses[prompt]
+        else:
+            # Sort longest-first so more specific prefixes win over shorter ones.
+            for known_prompt in sorted(mock_llm_responses, key=len, reverse=True):
+                if prompt.startswith(known_prompt):
+                    response = mock_llm_responses[known_prompt]
+                    break
+
+        if response is not None:
             if isinstance(response, Exception):
                 await asyncio.sleep(0.01)
                 raise response
@@ -52,7 +61,7 @@ def mock_llm_response(mock_llm_responses):
 @pytest_asyncio.fixture
 async def service(mock_llm_response):
     """Фикстура для инициализированного и запущенного LLMBrokerService."""
-    from llm_broker import LLMBrokerSettings
+    from llm_actor import LLMBrokerSettings
 
     settings = LLMBrokerSettings()
     base_client = DummyLLMClient(settings=settings)

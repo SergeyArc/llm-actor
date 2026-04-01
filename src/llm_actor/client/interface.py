@@ -4,7 +4,7 @@ from typing import Any, Protocol, runtime_checkable
 @runtime_checkable
 class LLMClientInterface(Protocol):
     """
-    Интерфейс для внешних LLM клиентов, используемых в llm_broker.
+    Интерфейс для внешних LLM клиентов, используемых в llm_actor.
 
     ВАЖНО: Внешние клиенты НЕ должны реализовывать retry логику самостоятельно.
     Retry механизм с exponential backoff обеспечивается брокером на уровне
@@ -45,7 +45,7 @@ class LLMClientInterface(Protocol):
 @runtime_checkable
 class LLMClientWithCircuitBreakerInterface(Protocol):
     """
-    Интерфейс для LLM клиентов с Circuit Breaker, используемых внутри llm_broker.
+    Интерфейс для LLM клиентов с Circuit Breaker, используемых внутри llm_actor.
 
     Ошибки валидации (ValueError, ValidationError, JSONDecodeError) обрабатываются
     на уровне LLMClientWithRetry с автоматическими повторами запросов.

@@ -2,12 +2,12 @@ import asyncio
 import time
 from typing import Any
 
-from llm_broker.client.interface import LLMClientWithCircuitBreakerInterface
-from llm_broker.core.messages import ActorMessage
-from llm_broker.exceptions import CircuitBreakerOpenError, OverloadError
-from llm_broker.logger import BrokerLogger
-from llm_broker.metrics import MetricsCollector
-from llm_broker.settings import LLMBrokerSettings
+from llm_actor.client.interface import LLMClientWithCircuitBreakerInterface
+from llm_actor.core.messages import ActorMessage
+from llm_actor.exceptions import ActorFailedError, CircuitBreakerOpenError, OverloadError
+from llm_actor.logger import BrokerLogger
+from llm_actor.metrics import MetricsCollector
+from llm_actor.settings import LLMBrokerSettings
 
 # Таймаут периодического пробуждения в idle-режиме для проверки _running.
 _IDLE_POLL_TIMEOUT = 1.0
@@ -77,7 +77,7 @@ class ModelActor:
     async def send(self, msg: ActorMessage[Any]) -> None:
         try:
             await asyncio.wait_for(self._inbox.put(msg), timeout=1.0)
-        except (TimeoutError, asyncio.TimeoutError) as err:
+        except TimeoutError as err:
             # P-7: asyncio.TimeoutError наследует TimeoutError в Python 3.11+,
             # но на более ранних версиях они могут различаться — ловим оба явно.
             raise OverloadError(f"{self._actor_id} mailbox full") from err
@@ -107,7 +107,7 @@ class ModelActor:
 
             try:
                 msg = await asyncio.wait_for(self._inbox.get(), timeout=timeout)
-            except (TimeoutError, asyncio.TimeoutError):
+            except TimeoutError:
                 if self._pending:
                     self._logger.debug(f"Batch timeout, processing {len(self._pending)} messages")
                     await self._safe_process_batch()
@@ -173,14 +173,23 @@ class ModelActor:
                 f"{batch_size} messages rejected after {duration:.3f}s: {e}",
                 exc_info=True,
             )
-            self._reject_batch(batch, e)
-
             if self._consecutive_failures >= self._max_consecutive_failures:
                 self._logger.critical(
-                    f"Exceeded max consecutive failures ({self._max_consecutive_failures}), stopping. "
-                    f"Supervisor will handle restart."
+                    f"Exceeded max consecutive failures ({self._max_consecutive_failures}), "
+                    "raising ActorFailedError for supervisor restart."
                 )
-                self._running = False
+                failed_messages = [*batch, *self._pending]
+                self._pending.clear()
+                raise ActorFailedError(
+                    message=(
+                        f"Actor {self._actor_id} failed after "
+                        f"{self._consecutive_failures} consecutive errors"
+                    ),
+                    actor_id=self._actor_id,
+                    pending_messages=failed_messages,
+                ) from e
+
+            self._reject_batch(batch, e)
 
     async def _process_batch(self, batch: list[ActorMessage[Any]]) -> None:
         """Process batch of messages"""

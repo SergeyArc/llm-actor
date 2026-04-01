@@ -1,13 +1,12 @@
-import pytest
 
-from llm_broker import (
+from llm_actor import (
+    CircuitBreaker,
+    LLMBrokerSettings,
     LLMClientInterface,
     LLMClientWithCircuitBreakerInterface,
-    LLMBrokerSettings,
-    CircuitBreaker,
     MetricsCollector,
 )
-from llm_broker.client.llm import LLMClientWithCircuitBreaker
+from llm_actor.client.llm import LLMClientWithCircuitBreaker
 from tests.dummy_llm_client import DummyLLMClient
 
 

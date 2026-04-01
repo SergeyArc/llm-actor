@@ -1,13 +1,14 @@
-from llm_broker.actors.pool import HealthStatus, SupervisedActorPool
-from llm_broker.actors.worker import ModelActor
-from llm_broker.client.interface import (
+from llm_actor.actors.pool import HealthStatus, SupervisedActorPool
+from llm_actor.actors.worker import ModelActor
+from llm_actor.client.interface import (
     LLMClientInterface,
     LLMClientWithCircuitBreakerInterface,
 )
-from llm_broker.client.llm import LLMClientWithCircuitBreaker
-from llm_broker.client.retry import LLMClientWithRetry
-from llm_broker.core.messages import ActorMessage
-from llm_broker.exceptions import (
+from llm_actor.client.llm import LLMClientWithCircuitBreaker, build_json_prompt
+from llm_actor.client.retry import LLMClientWithRetry
+from llm_actor.core.messages import ActorMessage
+from llm_actor.exceptions import (
+    ActorFailedError,
     CircuitBreakerOpenError,
     LLMBrokerError,
     LLMServiceError,
@@ -18,14 +19,15 @@ from llm_broker.exceptions import (
     OverloadError,
     PoolShuttingDownError,
 )
-from llm_broker.logger import BrokerLogger
-from llm_broker.metrics import MetricsCollector
-from llm_broker.resilience.circuit_breaker import CircuitBreaker
-from llm_broker.service import LLMBrokerService
-from llm_broker.settings import LLMBrokerSettings
+from llm_actor.logger import BrokerLogger
+from llm_actor.metrics import MetricsCollector
+from llm_actor.resilience.circuit_breaker import CircuitBreaker
+from llm_actor.service import LLMBrokerService
+from llm_actor.settings import LLMBrokerSettings
 
 __all__ = [
     "ActorMessage",
+    "ActorFailedError",
     "BrokerLogger",
     "CircuitBreaker",
     "CircuitBreakerOpenError",
@@ -35,6 +37,7 @@ __all__ = [
     "LLMBrokerSettings",
     "LLMClientInterface",
     "LLMClientWithCircuitBreaker",
+    "build_json_prompt",
     "LLMClientWithCircuitBreakerInterface",
     "LLMClientWithRetry",
     "LLMServiceError",

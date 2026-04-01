@@ -1,4 +1,6 @@
-import pytest
+import json
+
+from pydantic import ValidationError
 
 from tests.models import User
 
@@ -99,8 +101,6 @@ async def test_ask_batch_with_pydantic_validation_error(service, mock_llm_respon
     assert isinstance(results[0], User)
     assert results[0].name == "Alice"
     assert isinstance(results[1], Exception)
-    assert "Failed to parse JSON" in str(results[1]) or isinstance(
-        results[1], ValueError
-    )
+    assert isinstance(results[1], json.JSONDecodeError)
     assert isinstance(results[2], Exception)
-    assert "Validation failed" in str(results[2]) or isinstance(results[2], ValueError)
+    assert isinstance(results[2], ValidationError)

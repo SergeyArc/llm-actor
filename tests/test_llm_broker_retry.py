@@ -4,16 +4,16 @@ from unittest.mock import patch
 
 import pytest
 
-from llm_broker import LLMBrokerService, LLMBrokerSettings
-from llm_broker.client.interface import LLMClientWithCircuitBreakerInterface
-from llm_broker.client.llm import LLMClientWithCircuitBreaker
-from llm_broker.client.retry import LLMClientWithRetry
-from llm_broker.exceptions import (
+from llm_actor import LLMBrokerService, LLMBrokerSettings
+from llm_actor.client.interface import LLMClientWithCircuitBreakerInterface
+from llm_actor.client.llm import LLMClientWithCircuitBreaker
+from llm_actor.client.retry import LLMClientWithRetry
+from llm_actor.exceptions import (
     LLMServiceHTTPError,
     LLMServiceOverloadedError,
     LLMServiceUnavailableError,
 )
-from llm_broker.resilience.circuit_breaker import CircuitBreaker
+from llm_actor.resilience.circuit_breaker import CircuitBreaker
 from tests.dummy_llm_client import DummyLLMClient
 
 
