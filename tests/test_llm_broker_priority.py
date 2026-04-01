@@ -86,6 +86,24 @@ async def test_high_priority_processed_before_low() -> None:
 
 
 @pytest.mark.asyncio
+async def test_low_priority_tasks_complete_despite_high_priority_flood(service) -> None:
+    high_priority, low_priority = 1, 100
+    high_tasks = [
+        asyncio.create_task(service.generate(f"high-{i}", priority=high_priority)) for i in range(20)
+    ]
+    low_tasks = [
+        asyncio.create_task(service.generate(f"low-{i}", priority=low_priority)) for i in range(5)
+    ]
+
+    results = await asyncio.wait_for(
+        asyncio.gather(*high_tasks, *low_tasks, return_exceptions=True),
+        timeout=30.0,
+    )
+    errors = [r for r in results if isinstance(r, Exception)]
+    assert not errors, f"Tasks lost/failed: {errors}"
+
+
+@pytest.mark.asyncio
 async def test_ac5b_item_not_lost_when_get_and_stop_simultaneous() -> None:
     """AC 5b: если get_fut и stop_fut оба в done — элемент не теряется."""
     settings = LLMBrokerSettings()

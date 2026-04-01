@@ -9,9 +9,14 @@ from pydantic import ValidationError
 from llm_actor import LLMBrokerSettings
 from llm_actor.actors.pool import _PrioritizedMessage
 from llm_actor.actors.worker import ModelActor
-from llm_actor.client.llm import _strip_schema_descriptions, build_json_prompt
+from llm_actor.client.llm import (
+    LLMClientWithCircuitBreaker,
+    _strip_schema_descriptions,
+    build_json_prompt,
+)
 from llm_actor.core.messages import ActorMessage
 from llm_actor.exceptions import ActorFailedError
+from llm_actor.resilience.circuit_breaker import CircuitBreaker
 from tests.models import User
 
 
@@ -31,6 +36,38 @@ async def test_ask_with_mismatched_json_structure(service, mock_llm_response):
 
     with pytest.raises(ValidationError):
         await service.generate(prompt, response_model=User)
+
+
+async def test_semantic_retry_succeeds_on_second_attempt() -> None:
+    settings = LLMBrokerSettings(LLM_VALIDATION_RETRY_MAX_ATTEMPTS=3)
+    mock_base_client = AsyncMock()
+    mock_base_client.generate_async.side_effect = [
+        "not a json string",
+        '{"name": "Alice", "age": 30}',
+    ]
+    client = LLMClientWithCircuitBreaker(
+        base_client=mock_base_client,
+        circuit_breaker=CircuitBreaker(settings=settings),
+        max_validation_attempts=settings.LLM_VALIDATION_RETRY_MAX_ATTEMPTS,
+    )
+    result = await client.generate("get user", response_model=User)
+    assert result.name == "Alice"
+    assert result.age == 30
+    assert mock_base_client.generate_async.call_count == 2
+
+
+async def test_semantic_retry_exhausts_all_max_attempts() -> None:
+    settings = LLMBrokerSettings(LLM_VALIDATION_RETRY_MAX_ATTEMPTS=3)
+    mock_base_client = AsyncMock()
+    mock_base_client.generate_async.return_value = "not a json string"
+    client = LLMClientWithCircuitBreaker(
+        base_client=mock_base_client,
+        circuit_breaker=CircuitBreaker(settings=settings),
+        max_validation_attempts=settings.LLM_VALIDATION_RETRY_MAX_ATTEMPTS,
+    )
+    with pytest.raises(json.JSONDecodeError):
+        await client.generate("get user", response_model=User)
+    assert mock_base_client.generate_async.call_count == 3
 
 
 def test_build_json_prompt_strips_description_fields():

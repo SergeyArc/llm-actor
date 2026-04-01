@@ -49,7 +49,7 @@ def mock_llm_response(mock_llm_responses):
                 raise response
             response_text = str(response)
 
-        latency = self._calculate_latency(prompt, len(response_text))
+        latency = self._calculate_latency(prompt, response_text)
         await asyncio.sleep(latency)
 
         return response_text

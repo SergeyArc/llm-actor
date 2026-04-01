@@ -27,6 +27,9 @@ class DummyLLMClient:
         self.prompt_errors: dict[str, list[Exception]] = {}
         self.prompt_call_counts: dict[str, int] = {}
 
+        self.prompt_response_sequences: dict[str, list[str]] = {}
+        self.prompt_response_call_indices: dict[str, int] = {}
+
         self.total_input_tokens = 0
         self.total_output_tokens = 0
 
@@ -34,10 +37,41 @@ class DummyLLMClient:
         """Приблизительная оценка количества токенов (1 токен ≈ 4 символа)."""
         return max(1, len(text) // 4)
 
-    def _calculate_latency(self, prompt: str, response_length: int) -> float:
+    def set_prompt_response_sequence(self, prompt_key: str, responses: list[str] | None) -> None:
+        if not responses:
+            self.prompt_response_sequences.pop(prompt_key, None)
+            self.prompt_response_call_indices.pop(prompt_key, None)
+        else:
+            self.prompt_response_sequences[prompt_key] = list(responses)
+            self.prompt_response_call_indices.pop(prompt_key, None)
+
+    def _resolve_prompt_sequence_key(self, prompt: str) -> str | None:
+        if prompt in self.prompt_response_sequences:
+            seq = self.prompt_response_sequences[prompt]
+            if seq:
+                return prompt
+        for key in sorted(self.prompt_response_sequences.keys(), key=len, reverse=True):
+            if prompt.startswith(key):
+                seq = self.prompt_response_sequences[key]
+                if seq:
+                    return key
+        return None
+
+    def _take_response_from_sequence(self, prompt: str) -> str | None:
+        key = self._resolve_prompt_sequence_key(prompt)
+        if key is None:
+            return None
+        sequence = self.prompt_response_sequences[key]
+        index = self.prompt_response_call_indices.get(key, 0)
+        if index >= len(sequence):
+            return None
+        self.prompt_response_call_indices[key] = index + 1
+        return sequence[index]
+
+    def _calculate_latency(self, prompt: str, response_text: str) -> float:
         """Вычисляет задержку на основе длины промпта и ответа."""
         input_tokens = self._estimate_tokens(prompt)
-        output_tokens = self._estimate_tokens("Response for: " + prompt)
+        output_tokens = self._estimate_tokens(response_text)
 
         processing_time = (input_tokens + output_tokens) / self.tokens_per_second
         variance = random.uniform(-self.latency_variance, self.latency_variance)
@@ -87,8 +121,9 @@ class DummyLLMClient:
         if error:
             raise error
 
-        response_text = f"Response for: {prompt}"
-        latency = self._calculate_latency(prompt, len(response_text))
+        from_sequence = self._take_response_from_sequence(prompt)
+        response_text = from_sequence if from_sequence is not None else f"Response for: {prompt}"
+        latency = self._calculate_latency(prompt, response_text)
 
         await asyncio.sleep(latency)
 
