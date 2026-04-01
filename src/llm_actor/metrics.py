@@ -6,7 +6,9 @@ class MetricsCollector:
     def __init__(self, registry: CollectorRegistry | None = None) -> None:
         reg = registry if registry is not None else _DEFAULT_REGISTRY
         self.inbox_size_gauge = Gauge(
-            "llm_actor_inbox_size", "Size of actor inbox queue", ["actor_id"],
+            "llm_actor_inbox_size",
+            "Size of shared pool task queue",
+            ["pool_id"],
             registry=reg,
         )
         self.batches_processed_counter = Counter(

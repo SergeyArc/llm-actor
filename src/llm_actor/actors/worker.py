@@ -1,16 +1,18 @@
 import asyncio
 import time
-from typing import Any
+from typing import Any, Literal
 
 from llm_actor.client.interface import LLMClientWithCircuitBreakerInterface
 from llm_actor.core.messages import ActorMessage
-from llm_actor.exceptions import ActorFailedError, CircuitBreakerOpenError, OverloadError
+from llm_actor.exceptions import ActorFailedError, CircuitBreakerOpenError
 from llm_actor.logger import BrokerLogger
 from llm_actor.metrics import MetricsCollector
 from llm_actor.settings import LLMBrokerSettings
 
 # Таймаут периодического пробуждения в idle-режиме для проверки _running.
 _IDLE_POLL_TIMEOUT = 1.0
+
+_QueuePollOutcome = Literal["timeout", "stop", "message"]
 
 
 class ModelActor:
@@ -21,15 +23,17 @@ class ModelActor:
         client: LLMClientWithCircuitBreakerInterface,
         actor_id: str,
         settings: LLMBrokerSettings,
+        shared_queue: asyncio.PriorityQueue[Any],
         metrics: MetricsCollector | None = None,
+        pool_id: str = "default",
     ) -> None:
         self._client: LLMClientWithCircuitBreakerInterface = client
         self._actor_id = actor_id
         self._settings = settings
         self._metrics = metrics
-        self._inbox: asyncio.Queue[ActorMessage[Any] | None] = asyncio.Queue(
-            maxsize=settings.LLM_MAX_QUEUE_SIZE
-        )
+        self._shared_queue = shared_queue
+        self._pool_id = pool_id
+        self._stop_event = asyncio.Event()
         self._batch_size = settings.LLM_BATCH_SIZE
         self._batch_timeout = settings.LLM_BATCH_TIMEOUT
         self._semaphore = asyncio.Semaphore(settings.LLM_MAX_CONCURRENT)
@@ -45,11 +49,6 @@ class ModelActor:
     def actor_id(self) -> str:
         """Actor identifier for metrics and logging"""
         return self._actor_id
-
-    @property
-    def inbox(self) -> asyncio.Queue[ActorMessage[Any] | None]:
-        """Actor message inbox queue"""
-        return self._inbox
 
     @property
     def pending(self) -> list[ActorMessage[Any]]:
@@ -69,63 +68,94 @@ class ModelActor:
 
     async def stop(self) -> None:
         self._running = False
+        self._stop_event.set()
         if self._task and not self._task.done():
-            await self._inbox.put(None)
             await self._task
             self._logger.info("Actor stopped")
 
-    async def send(self, msg: ActorMessage[Any]) -> None:
+    async def _abort_pending_queue_get(self, get_fut: asyncio.Future[Any]) -> None:
+        if get_fut.done():
+            return
+        get_fut.cancel()
         try:
-            await asyncio.wait_for(self._inbox.put(msg), timeout=1.0)
-        except TimeoutError as err:
-            # P-7: asyncio.TimeoutError наследует TimeoutError в Python 3.11+,
-            # но на более ранних версиях они могут различаться — ловим оба явно.
-            raise OverloadError(f"{self._actor_id} mailbox full") from err
+            await get_fut
+        except (asyncio.CancelledError, Exception):
+            pass
+
+    def _append_item_if_get_succeeded(
+        self, done: set[asyncio.Future[Any]], get_fut: asyncio.Future[Any]
+    ) -> bool:
+        if get_fut not in done or get_fut.cancelled():
+            return False
+        if get_fut.exception() is not None:
+            return False
+        item = get_fut.result()
+        self._shared_queue.task_done()
+        self._pending.append(item.message)
+        return True
+
+    async def _poll_shared_queue_or_stop(
+        self, stop_fut: asyncio.Future[Any], timeout: float
+    ) -> _QueuePollOutcome:
+        get_fut = asyncio.ensure_future(self._shared_queue.get())
+        done, _ = await asyncio.wait(
+            {get_fut, stop_fut},
+            timeout=timeout,
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        if not done:
+            await self._abort_pending_queue_get(get_fut)
+            return "timeout"
+        if stop_fut in done:
+            if not self._append_item_if_get_succeeded(done, get_fut):
+                await self._abort_pending_queue_get(get_fut)
+            return "stop"
+        self._append_item_if_get_succeeded(done, get_fut)
+        return "message"
 
     async def _run(self) -> None:
         """Main actor loop with self-healing"""
         self._logger.info("Main loop started")
         last_metrics_update = 0.0
+        stop_fut = asyncio.ensure_future(self._stop_event.wait())
 
-        while True:
-            if not self._running:
-                self._logger.warning(
-                    f"Stopped due to consecutive failures ({self._consecutive_failures}/{self._max_consecutive_failures})"
-                )
-                break
+        try:
+            while True:
+                if not self._running:
+                    self._logger.warning(
+                        f"Stopped due to consecutive failures ({self._consecutive_failures}/{self._max_consecutive_failures})"
+                    )
+                    break
 
-            now = time.time()
-            if self._metrics and (now - last_metrics_update) >= 1.0:
-                self._metrics.inbox_size_gauge.labels(actor_id=self._actor_id).set(
-                    self._inbox.qsize()
-                )
-                last_metrics_update = now
+                now = time.time()
+                if self._metrics and (now - last_metrics_update) >= 1.0:
+                    self._metrics.inbox_size_gauge.labels(pool_id=self._pool_id).set(
+                        self._shared_queue.qsize()
+                    )
+                    last_metrics_update = now
 
-            # P-3: при отсутствии pending используем периодический таймаут вместо None,
-            # чтобы цикл мог проверить _running и не блокировать вечно при idle.
-            timeout = self._batch_timeout if self._pending else _IDLE_POLL_TIMEOUT
+                timeout = self._batch_timeout if self._pending else _IDLE_POLL_TIMEOUT
+                outcome = await self._poll_shared_queue_or_stop(stop_fut, timeout)
 
-            try:
-                msg = await asyncio.wait_for(self._inbox.get(), timeout=timeout)
-            except TimeoutError:
-                if self._pending:
-                    self._logger.debug(f"Batch timeout, processing {len(self._pending)} messages")
+                if outcome == "timeout":
+                    if self._pending:
+                        self._logger.debug(f"Batch timeout, processing {len(self._pending)} messages")
+                        await self._safe_process_batch()
+                    continue
+                if outcome == "stop":
+                    if self._pending:
+                        self._logger.debug(
+                            f"Stop signal received, processing {len(self._pending)} pending messages"
+                        )
+                        await self._safe_process_batch()
+                    break
+                if len(self._pending) >= self._batch_size:
+                    self._logger.debug(
+                        f"Batch full ({len(self._pending)}/{self._batch_size}), processing immediately"
+                    )
                     await self._safe_process_batch()
-                continue
-
-            if msg is None:
-                if self._pending:
-                    self._logger.debug(f"Stop signal received, processing {len(self._pending)} pending messages")
-                    await self._safe_process_batch()
-                self._inbox.task_done()
-                break
-
-            self._pending.append(msg)
-            self._inbox.task_done()
-
-            if len(self._pending) >= self._batch_size:
-                self._logger.debug(f"Batch full ({len(self._pending)}/{self._batch_size}), processing immediately")
-                await self._safe_process_batch()
+        finally:
+            stop_fut.cancel()
 
         self._logger.info("Main loop finished")
 
@@ -190,6 +220,12 @@ class ModelActor:
                 ) from e
 
             self._reject_batch(batch, e)
+        except asyncio.CancelledError:
+            self._reject_batch(
+                batch,
+                RuntimeError(f"Actor {self._actor_id} was cancelled during batch processing"),
+            )
+            raise
 
     async def _process_batch(self, batch: list[ActorMessage[Any]]) -> None:
         """Process batch of messages"""

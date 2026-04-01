@@ -7,12 +7,39 @@ from uuid import uuid4
 from llm_actor.actors.worker import ModelActor
 from llm_actor.client.interface import LLMClientWithCircuitBreakerInterface
 from llm_actor.core.messages import ActorMessage
-from llm_actor.exceptions import ActorFailedError, PoolShuttingDownError
+from llm_actor.exceptions import ActorFailedError, OverloadError, PoolShuttingDownError
 from llm_actor.logger import BrokerLogger
 from llm_actor.metrics import MetricsCollector
 from llm_actor.settings import LLMBrokerSettings
 
 T = TypeVar("T", bound=object)
+
+
+@dataclass(eq=False)
+class _PrioritizedMessage:
+    priority: int
+    sequence: int
+    message: ActorMessage[Any]
+
+    def __lt__(self, other: object) -> bool:
+        if not isinstance(other, _PrioritizedMessage):
+            return NotImplemented
+        return (self.priority, self.sequence) < (other.priority, other.sequence)
+
+    def __le__(self, other: object) -> bool:
+        if not isinstance(other, _PrioritizedMessage):
+            return NotImplemented
+        return (self.priority, self.sequence) <= (other.priority, other.sequence)
+
+    def __gt__(self, other: object) -> bool:
+        if not isinstance(other, _PrioritizedMessage):
+            return NotImplemented
+        return (self.priority, self.sequence) > (other.priority, other.sequence)
+
+    def __ge__(self, other: object) -> bool:
+        if not isinstance(other, _PrioritizedMessage):
+            return NotImplemented
+        return (self.priority, self.sequence) >= (other.priority, other.sequence)
 
 
 @dataclass
@@ -46,7 +73,8 @@ class SupervisedActorPool:
         self._restart_counts: list[list[float]] = []
         self._supervisor_task: asyncio.Task[None] | None = None
         self._running = False
-        self._current_actor_index: int = 0
+        self._shared_queue: asyncio.PriorityQueue[_PrioritizedMessage] | None = None
+        self._sequence_counter: int = 0
         self._logger = BrokerLogger.bind_context(pool_id=self._pool_id)
 
     @property
@@ -56,20 +84,28 @@ class SupervisedActorPool:
 
     async def start(self) -> None:
         """Start pool with supervision"""
+        if self._running:
+            return
         self._running = True
         self._logger.info(f"Starting pool with {self._num_actors} actors")
+
+        self._shared_queue = asyncio.PriorityQueue(maxsize=self._settings.LLM_MAX_QUEUE_SIZE)
 
         for i in range(self._num_actors):
             actor = ModelActor(
                 client=self._client,
                 actor_id=f"actor-{i}",
                 settings=self._settings,
+                shared_queue=self._shared_queue,
                 metrics=self._metrics,
+                pool_id=self._pool_id,
             )
             await actor.start()
+            task = actor._task
+            if task is None:
+                raise RuntimeError(f"Actor {actor.actor_id} failed to start: task was not created")
             self._actors.append(actor)
-            if actor._task is not None:
-                self._actor_tasks.append(actor._task)
+            self._actor_tasks.append(task)
             self._restart_counts.append([])
 
         self._supervisor_task = asyncio.create_task(self._supervise())
@@ -146,18 +182,7 @@ class SupervisedActorPool:
             return list(exception.pending_messages)
 
         log.error(f"Actor crashed: {exception}", exc_info=exception)
-        # Drain inbox to recover unprocessed messages from the crashed actor.
-        inbox_messages: list[ActorMessage[Any]] = []
-        while not actor.inbox.empty():
-            try:
-                msg = actor.inbox.get_nowait()
-                if msg is not None:  # None is the stop signal
-                    inbox_messages.append(msg)
-            except asyncio.QueueEmpty:
-                break
-        if inbox_messages:
-            log.warning(f"Recovered {len(inbox_messages)} unprocessed messages from crashed actor inbox")
-        return inbox_messages
+        return []
 
     def _should_restart(self, actor_index: int) -> bool:
         """Check if actor should be restarted based on restart policy.
@@ -172,6 +197,8 @@ class SupervisedActorPool:
 
     async def _restart_actor(self, actor_index: int) -> None:
         """Restart specific actor"""
+        if self._shared_queue is None:
+            raise RuntimeError("Pool shared queue is not initialized")
         old_actor = self._actors[actor_index]
         log = self._logger.bind(actor_id=old_actor.actor_id, actor_index=actor_index)
         log.info(
@@ -183,11 +210,14 @@ class SupervisedActorPool:
         except TimeoutError:
             log.warning("Actor stop timeout during restart")
 
+        restart_num = len(self._restart_counts[actor_index]) + 1
         new_actor = ModelActor(
             client=self._client,
-            actor_id=f"actor-{actor_index}-restarted",
+            actor_id=f"actor-{actor_index}-restart-{restart_num}",
             settings=self._settings,
+            shared_queue=self._shared_queue,
             metrics=self._metrics,
+            pool_id=self._pool_id,
         )
         await new_actor.start()
 
@@ -234,47 +264,31 @@ class SupervisedActorPool:
             if message.future and not message.future.done():
                 message.future.set_exception(error)
 
-    def _select_next_actor(self) -> ModelActor | None:
-        """Select next actor using round-robin strategy, skipping dead actors"""
-        if not self._actors:
-            return None
-
-        if not any(actor.is_alive for actor in self._actors):
-            return None
-
-        start_index = self._current_actor_index % len(self._actors)
-        for i in range(len(self._actors)):
-            idx = (start_index + i) % len(self._actors)
-            actor = self._actors[idx]
-            if actor.is_alive:
-                self._current_actor_index = (idx + 1) % len(self._actors)
-                return actor
-
-        return None
-
-    async def send(self, msg: ActorMessage[Any], retries: int = 2) -> None:
-        """Send message to actor using round-robin routing with retry"""
+    async def send(self, msg: ActorMessage[Any]) -> None:
         if not self._running:
             raise PoolShuttingDownError("Pool is shutting down, cannot accept new requests")
-        for attempt in range(retries):
-            actor = self._select_next_actor()
-            if actor is None:
-                raise RuntimeError("No alive actors available in pool")
-            try:
-                await actor.send(msg)
-                return
-            except Exception as e:
-                self._logger.bind(actor_id=actor.actor_id, request_id=msg.id).warning(
-                    f"Failed to send message to actor on attempt {attempt + 1}/{retries}: {e}"
-                )
-                if attempt == retries - 1:
-                    raise
+        if self._shared_queue is None:
+            raise RuntimeError("Pool has not been started; call start() before send()")
+        if msg.enqueue_sequence is None:
+            msg.enqueue_sequence = self._sequence_counter
+            self._sequence_counter += 1
+        item = _PrioritizedMessage(
+            priority=msg.priority,
+            sequence=msg.enqueue_sequence,
+            message=msg,
+        )
+        try:
+            await asyncio.wait_for(self._shared_queue.put(item), timeout=1.0)
+        except TimeoutError as err:
+            raise OverloadError("Shared queue is full") from err
 
     @overload
     async def generate(
         self,
         prompt: str,
         response_model: None = None,
+        *,
+        priority: int = 10,
     ) -> str: ...
 
     @overload
@@ -282,12 +296,16 @@ class SupervisedActorPool:
         self,
         prompt: str,
         response_model: type[T],
+        *,
+        priority: int = 10,
     ) -> T: ...
 
     async def generate(
         self,
         prompt: str,
         response_model: type[Any] | None = None,
+        *,
+        priority: int = 10,
     ) -> Any | str:
         """
         High-level interface for sending prompt to pool.
@@ -299,7 +317,12 @@ class SupervisedActorPool:
         loop = asyncio.get_running_loop()
         future: asyncio.Future[Any] = loop.create_future()
 
-        msg = ActorMessage(prompt=prompt, response_model=response_model, future=future)
+        msg = ActorMessage(
+            prompt=prompt,
+            response_model=response_model,
+            future=future,
+            priority=priority,
+        )
         self._logger.bind(request_id=msg.id).debug(
             f"Received generate request (response_model={'provided' if response_model else 'None'})"
         )
@@ -344,22 +367,13 @@ class SupervisedActorPool:
         return self._metrics
 
     async def _wait_for_empty_inboxes(self) -> None:
-        """Wait until all actor inboxes and pending batches are empty or all actors are dead."""
+        """Wait until shared queue and actor pending buffers are empty or all actors are dead."""
         while True:
-            total_pending = 0
-            all_dead = True
-
-            for actor, task in zip(self._actors, self._actor_tasks, strict=True):
-                if not task.done():
-                    all_dead = False
-                    # P-4: учитываем как inbox, так и pending-буфер актора,
-                    # потому что сообщения могут быть уже извлечены из inbox,
-                    # но ещё не обработаны (находятся в _pending).
-                    total_pending += actor.inbox.qsize() + len(actor.pending)
-
-            if total_pending == 0 or all_dead:
+            queue_size = self._shared_queue.qsize() if self._shared_queue else 0
+            pending_size = sum(len(actor.pending) for actor in self._actors)
+            all_dead = all(task.done() for task in self._actor_tasks)
+            if queue_size + pending_size == 0 or all_dead:
                 break
-
             await asyncio.sleep(0.1)
 
     async def stop(self) -> None:
@@ -381,7 +395,8 @@ class SupervisedActorPool:
                 timeout=self._settings.LLM_GRACEFUL_SHUTDOWN_TIMEOUT,
             )
         except TimeoutError:
-            total_lost = sum(actor.inbox.qsize() + len(actor.pending) for actor in self._actors)
+            queue_sz = self._shared_queue.qsize() if self._shared_queue else 0
+            total_lost = queue_sz + sum(len(actor.pending) for actor in self._actors)
             self._logger.warning(
                 f"Shutdown timeout after {self._settings.LLM_GRACEFUL_SHUTDOWN_TIMEOUT}s, "
                 f"~{total_lost} messages may be lost"

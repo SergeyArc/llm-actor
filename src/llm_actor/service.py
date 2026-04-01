@@ -76,6 +76,8 @@ class LLMBrokerService:
         self,
         prompt: str,
         response_model: None = None,
+        *,
+        priority: int = 10,
     ) -> str: ...
 
     @overload
@@ -83,21 +85,27 @@ class LLMBrokerService:
         self,
         prompt: str,
         response_model: type[T],
+        *,
+        priority: int = 10,
     ) -> T: ...
 
     async def generate(
         self,
         prompt: str,
         response_model: type[Any] | None = None,
+        *,
+        priority: int = 10,
     ) -> Any | str:
         self._logger.debug(
             f"Processing generate request (response_model={'provided' if response_model else 'None'})"
         )
-        return await self._pool.generate(prompt, response_model)
+        return await self._pool.generate(prompt, response_model, priority=priority)
 
     async def generate_batch(
         self,
         requests: list[tuple[str, type[Any] | None]],
+        *,
+        priority: int = 10,
     ) -> list[str | Any | Exception]:
         """
         Пакетная обработка запросов с параллельным выполнением.
@@ -115,7 +123,7 @@ class LLMBrokerService:
         tasks = []
         for prompt, response_model in requests:
             self._logger.info(f"Request: prompt={prompt[:100]}..., response_model={response_model}")
-            tasks.append(self._pool.generate(prompt, response_model))
+            tasks.append(self._pool.generate(prompt, response_model, priority=priority))
         results = await asyncio.gather(*tasks, return_exceptions=True)
         error_count = sum(1 for r in results if isinstance(r, Exception))
         if error_count > 0:

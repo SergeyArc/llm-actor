@@ -4,7 +4,8 @@
 
 ## Основные возможности
 
-- **Actor-inspired Design**: Внутренняя архитектура на базе пула акторов с супервизором для изоляции сбоев воркеров.
+- **Actor-inspired Design**: Внутренняя архитектура на базе единой **Priority Queue** и пула акторов с супервизором.
+- **Priority Management**: Поддержка уровней приоритета для задач (UI-запросы могут обгонять тяжелую фоновую аналитику).
 - **Resilience (Отказоустойчивость)**:
     - **Circuit Breaker**: Защита от каскадных сбоев провайдера. Быстрый отказ (fail-fast) при перегрузке.
     - **Transport Retry**: Автоматические повторы при сетевых ошибках (502, 503, 504, 429) с экспоненциальной задержкой.
@@ -75,14 +76,15 @@ async def main():
     await service.start()
     
     try:
-        # Обычный текстовый запрос
-        text = await service.generate("Расскажи шутку про Python")
+        # Обычный текстовый запрос с высоким приоритетом (по умолчанию 10)
+        text = await service.generate("Расскажи шутку про Python", priority=0)
         print(f"Текст: {text}")
         
-        # Запрос с валидацией через Pydantic
+        # Запрос с валидацией через Pydantic (приоритет по умолчанию)
         obj = await service.generate(
             "Извлеки данные: уверенность 0.9, ответ 'Привет'", 
-            response_model=MyResponse
+            response_model=MyResponse,
+            priority=5
         )
         print(f"Объект: {obj.answer} ({obj.confidence})")
         
@@ -105,16 +107,18 @@ requests = [
     ("Промпт 2", MyResponse),
     ("Промпт 3", None),
 ]
-results = await service.generate_batch(requests)
+results = await service.generate_batch(requests, priority=20)
 ```
 
 ### Мониторинг
 
-Пакет собирает следующие метрики Prometheus:
-- `llm_actor_requests_total`: общее количество запросов.
-- `llm_actor_request_duration_seconds`: гистограмма времени выполнения запросов.
-- `llm_actor_circuit_breaker_state`: текущее состояние circuit breaker (open/closed/half-open).
-- `llm_actor_actor_pool_size`: текущее количество активных акторов.
+Пакет собирает следующие ключевые метрики Prometheus:
+- `llm_actor_inbox_size`: текущий размер общей очереди задач (shared priority queue).
+- `llm_batch_processing_duration_seconds`: гистограмма времени обработки батча (по акторам).
+- `llm_batches_processed_total`: общее количество успешно обработанных батчей.
+- `llm_batches_failed_total`: количество батчей, завершившихся ошибкой.
+- `llm_circuit_breaker_trips_total`: счетчик срабатываний Circuit Breaker.
+- `llm_actor_restarts_total`: счетчик перезапусков акторов супервизором.
 
 ## Сравнение с аналогами (2026)
 
@@ -130,6 +134,7 @@ results = await service.generate_batch(requests)
 
 `llm-actor` — это **Actor-inspired concurrent worker pool**, прагматичная адаптация идей Erlang/Elixir для мира Python AsyncIO.
 
+- **Shared Priority Queue**: Все задачи попадают в единую очередь с приоритетами. Это гарантирует, что высокоприоритетные задачи обрабатываются в первую очередь, а нагрузка распределяется между акторами максимально равномерно (pull model).
 - **Изоляция сбоев**: Падение одного воркера при обработке сложного промпта не аффектит весь пул. Супервизор (`SupervisedActorPool`) автоматически перезапустит воркера и вернет его в строй.
 - **Backpressure**: Пакет выступает защитным буфером между вашим приложением и LLM. Вместо бесконечного создания задач, вызывающих `MemoryError`, брокер удерживает нагрузку в пределах заданного пула.
 - **Zero-Dependency Core**: Мы не тянем за собой тяжелые фреймворки. Ядро брокера использует только `pydantic`, `loguru` и `prometheus-client`.
@@ -154,3 +159,13 @@ pytest
 ruff check .
 mypy src
 ```
+
+## Roadmap
+
+Ниже приведен план развития `llm-actor` на ближайшее время:
+
+1.  **Провайдеры "из коробки"**: Реализация готовых клиентов для OpenAI, Anthropic, GigaChat и vLLM (Ollama), соответствующих `LLMClientInterface`. Пользователю больше не нужно будет писать свой транспортный слой.
+2.  **OpenTelemetry Tracing**: Интеграция глубокой трассировки запросов. Возможность видеть жизненный цикл задачи: "Очередь (wait time)" → "Акцепт актором" → "Сетевой запрос" → "Валидация" → "Завершение".
+3.  **Cost & Token Tracking**: Встроенный подсчет токенов и примерной стоимости каждого запроса на основе актуальных тарифов провайдеров. Экспорт статистики через метрики Prometheus.
+4.  **Priority Queuing Improvements**: Динамическая переприоритизация задач в очереди на основе их "возраста" (предотвращение голодания низкоприоритетных задач).
+

@@ -1,11 +1,13 @@
 import asyncio
 import json
+from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
 from pydantic import ValidationError
 
 from llm_actor import LLMBrokerSettings
+from llm_actor.actors.pool import _PrioritizedMessage
 from llm_actor.actors.worker import ModelActor
 from llm_actor.client.llm import _strip_schema_descriptions, build_json_prompt
 from llm_actor.core.messages import ActorMessage
@@ -69,8 +71,16 @@ async def test_actor_raises_actor_failed_error_at_threshold():
 
     settings = LLMBrokerSettings(LLM_MAX_CONSECUTIVE_FAILURES=1, LLM_BATCH_SIZE=1)
     mock_client = AsyncMock()
+    shared_queue: asyncio.PriorityQueue[Any] = asyncio.PriorityQueue(
+        maxsize=settings.LLM_MAX_QUEUE_SIZE
+    )
 
-    actor = ModelActor(client=mock_client, actor_id="test-actor", settings=settings)
+    actor = ModelActor(
+        client=mock_client,
+        actor_id="test-actor",
+        settings=settings,
+        shared_queue=shared_queue,
+    )
 
     batch_error = RuntimeError("Forced batch failure")
 
@@ -80,7 +90,9 @@ async def test_actor_raises_actor_failed_error_at_threshold():
         loop = asyncio.get_running_loop()
         future: asyncio.Future[str] = loop.create_future()
         msg = ActorMessage(prompt="fail", future=future)
-        await actor.send(msg)
+        await shared_queue.put(
+            _PrioritizedMessage(priority=msg.priority, sequence=0, message=msg)
+        )
 
         with pytest.raises(ActorFailedError):
             await actor._task  # type: ignore[misc]
