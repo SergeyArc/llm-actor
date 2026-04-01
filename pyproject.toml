@@ -1,0 +1,81 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "llm-broker"
+version = "0.1.0"
+description = "LLM broker: actor pool, circuit breaker, retries, metrics"
+readme = "README.md"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "pydantic~=2.9.2",
+    "pydantic-settings~=2.5.2",
+    "loguru>=0.7.0",
+    "prometheus-client>=0.19.0",
+]
+
+[project.optional-dependencies]
+gigachat = ["gigachat"]
+openai = ["openai"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "mypy>=1.11.0",
+    "ruff>=0.6.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/llm_broker"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/llm_broker"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = [
+    "E",
+    "F",
+    "I",
+    "B",
+    "C4",
+    "UP",
+    "C90",
+    "N",
+]
+ignore = ["E501"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+
+[tool.mypy]
+python_version = "3.13"
+check_untyped_defs = true
+disallow_any_generics = true
+disallow_incomplete_defs = true
+disallow_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_return_any = true
+warn_unused_configs = true
+strict_equality = true
+show_error_codes = true
+disallow_any_unimported = true
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+asyncio_mode = "auto"
