@@ -34,6 +34,7 @@ class LLMBrokerService:
         self._base_client = base_client
         self._settings = settings or LLMBrokerSettings()
         self._metrics = metrics or MetricsCollector()
+        self._logger = BrokerLogger.get_logger(name="llm_actor_service")
 
         circuit_breaker = CircuitBreaker(settings=self._settings, metrics=self._metrics)
         cb_client = cast(
@@ -55,7 +56,6 @@ class LLMBrokerService:
         self._pool = SupervisedActorPool(
             client=self._client, settings=self._settings, metrics=self._metrics
         )
-        self._logger = BrokerLogger.get_logger(name="llm_actor_service")
 
     @classmethod
     def from_openai(

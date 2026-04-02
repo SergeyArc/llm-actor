@@ -4,6 +4,18 @@ from typing import Any
 from loguru import logger
 
 
+def _broker_log_record_patcher(record: dict[str, Any]) -> None:
+    extra = record["extra"]
+    actor_id = extra.get("actor_id")
+    pool_id = extra.get("pool_id")
+    extra["actor_tag"] = f"[{actor_id}] " if actor_id else ""
+    if pool_id:
+        pool_prefix = pool_id[:8] if len(pool_id) > 8 else pool_id
+        extra["pool_tag"] = f"[pool {pool_prefix}] "
+    else:
+        extra["pool_tag"] = ""
+
+
 class BrokerLogger:
     """Централизованный логгер для пакета llm_actor на основе loguru."""
 
@@ -15,11 +27,10 @@ class BrokerLogger:
         level: str = "INFO",
     ) -> None:
         """
-        Добавляет обработчик loguru для llm_actor.
+        Убирает встроенный stderr-sink loguru (id 0) и добавляет единый формат для пакета.
 
-        Не удаляет существующие обработчики приложения-хоста.
-        Если нужно заменить все обработчики — вызови ``logger.remove()``
-        до вызова этого метода.
+        Снимает все существующие sink'и loguru и добавляет один stderr-sink с единым форматом.
+        Иначе возможны дубли (дефолтный sink + наш и/или повторный add).
 
         Args:
             level: Уровень логирования (DEBUG, INFO, WARNING, ERROR, CRITICAL)
@@ -27,9 +38,14 @@ class BrokerLogger:
         if cls._configured:
             return
 
+        logger.remove()
+
+        logger.configure(patcher=_broker_log_record_patcher)
+
         console_format = (
             "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | "
             "<level>{level: <8}</level> | "
+            "{extra[actor_tag]}{extra[pool_tag]}"
             "<cyan>{name}</cyan>:<cyan>{function}</cyan> | "
             "<level>{message}</level>"
         )
@@ -81,6 +97,9 @@ class BrokerLogger:
         Returns:
             Логгер с привязанным контекстом
         """
+        if not cls._configured:
+            cls.configure()
+
         context = {}
         if pool_id:
             context["pool_id"] = pool_id
