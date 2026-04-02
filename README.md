@@ -12,6 +12,7 @@
     - **Semantic Retry**: Повторная генерация, если ответ LLM не прошел валидацию схемы (JSON Schema).
 - **Embedded Batching**: Прозрачная группировка запросов для эффективного использования Batch API провайдеров (скидки до 50% у ряда вендоров на апрель 2026).
 - **Structured Output**: Глубокая интеграция с Pydantic V2 для получения строго типизированных данных без оверхеда на сторонние фреймворки.
+- **LLMRequest и адаптеры**: Единый DTO запроса; готовые адаптеры OpenAI, OpenAI-compatible и Anthropic с маппингом ошибок провайдера в исключения брокера; фабрики `LLMBrokerService.from_*`.
 - **Monitoring**: Нативный экспорт метрик Prometheus (latency, error rate, actor pool state).
 - **Backpressure Control**: Управление конкурентностью для локальных моделей (vLLM, Ollama), предотвращающее перегрузку GPU.
 
@@ -29,8 +30,11 @@ pip install llm-actor
 # С поддержкой GigaChat
 pip install llm-actor[gigachat]
 
-# С поддержкой OpenAI
+# С поддержкой OpenAI (SDK для встроенного адаптера)
 pip install llm-actor[openai]
+
+# Адаптер Anthropic: отдельно ставится пакет anthropic (в pyproject нет extra [anthropic])
+pip install anthropic
 ```
 
 ## Быстрый старт
@@ -57,6 +61,8 @@ class MyLLMClient(LLMClientInterface):
 Фабрики сервиса (маппинг ошибок провайдера в исключения брокера внутри адаптера):
 
 ```python
+from llm_actor import LLMBrokerService
+
 # pip install llm-actor[openai]
 service = LLMBrokerService.from_openai(api_key="...", model="gpt-4o")
 # OpenAI-compatible base_url (vLLM, LM Studio, …)
@@ -83,7 +89,8 @@ async def main():
         LLM_MAX_CONCURRENT=5,
         LLM_VALIDATION_RETRY_MAX_ATTEMPTS=3
     )
-    
+
+    # Клиент из п.1; либо: service = LLMBrokerService.from_openai(..., settings=settings)
     base_client = MyLLMClient()
     service = LLMBrokerService(base_client=base_client, settings=settings)
     
@@ -125,6 +132,7 @@ if __name__ == "__main__":
 ```python
 from llm_actor import LLMRequest
 
+# MyResponse — ваша Pydantic-модель (как в примере выше)
 requests = [
     ("Промпт 1", None),
     (LLMRequest(prompt="Промпт 2", temperature=0.5), MyResponse),
@@ -177,7 +185,7 @@ results = await service.generate_batch(requests, priority=20)
 
 ```bash
 cd llm_actor
-uv sync --all-extras
+uv sync --all-extras   # gigachat + openai; для mypy/тестов Anthropic при необходимости: uv pip install anthropic
 pytest
 ruff check .
 mypy src

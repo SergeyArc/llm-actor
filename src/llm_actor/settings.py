@@ -20,6 +20,8 @@ class LLMBrokerSettings(BaseSettings):
     LLM_RETRY_BASE_BACKOFF: float = 1.0
     LLM_RETRY_BACKOFF_CAP: float = 16.0
     LLM_VALIDATION_RETRY_MAX_ATTEMPTS: int = 5
+    LLM_TOOL_EXECUTION_TIMEOUT: float = 30.0
+    LLM_TOOL_MAX_ITERATIONS: int = 10
 
     @field_validator(
         "LLM_NUM_ACTORS",
@@ -31,6 +33,7 @@ class LLMBrokerSettings(BaseSettings):
         "LLM_FAILURE_THRESHOLD",
         "LLM_MAX_CONSECUTIVE_FAILURES",
         "LLM_MAX_RESTARTS",
+        "LLM_TOOL_MAX_ITERATIONS",
     )
     @classmethod
     def must_be_positive(cls, v: int) -> int:
@@ -38,7 +41,12 @@ class LLMBrokerSettings(BaseSettings):
             raise ValueError(f"Value must be >= 1, got {v}")
         return v
 
-    @field_validator("LLM_BATCH_TIMEOUT", "LLM_RECOVERY_TIMEOUT", "LLM_GRACEFUL_SHUTDOWN_TIMEOUT")
+    @field_validator(
+        "LLM_BATCH_TIMEOUT",
+        "LLM_RECOVERY_TIMEOUT",
+        "LLM_GRACEFUL_SHUTDOWN_TIMEOUT",
+        "LLM_TOOL_EXECUTION_TIMEOUT",
+    )
     @classmethod
     def must_be_positive_float(cls, v: float) -> float:
         if v <= 0:

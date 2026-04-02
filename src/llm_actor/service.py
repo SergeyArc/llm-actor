@@ -8,6 +8,7 @@ from llm_actor.client.interface import (
 )
 from llm_actor.client.llm import LLMClientWithCircuitBreaker
 from llm_actor.client.retry import LLMClientWithRetry
+from llm_actor.client.tool_loop import ToolCallOrchestratorClient
 from llm_actor.core.request import LLMRequest
 from llm_actor.logger import BrokerLogger
 from llm_actor.metrics import MetricsCollector
@@ -43,8 +44,12 @@ class LLMBrokerService:
                 max_validation_attempts=self._settings.LLM_VALIDATION_RETRY_MAX_ATTEMPTS,
             ),
         )
+        orchestrated_client = cast(
+            LLMClientWithCircuitBreakerInterface,
+            ToolCallOrchestratorClient(cb_client, self._settings),
+        )
         self._client: LLMClientWithCircuitBreakerInterface = LLMClientWithRetry(
-            cb_client, self._settings
+            orchestrated_client, self._settings
         )
 
         self._pool = SupervisedActorPool(

@@ -73,6 +73,10 @@ show_error_codes = true
 disallow_any_unimported = true
 plugins = ["pydantic.mypy"]
 
+[[tool.mypy.overrides]]
+module = "anthropic"
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]

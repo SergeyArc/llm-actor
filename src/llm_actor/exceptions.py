@@ -100,3 +100,22 @@ class ActorFailedError(LLMBrokerError):
         self.actor_id = actor_id
         self.pending_messages: list[ActorMessage[Any]] = pending_messages or []
         super().__init__(message)
+
+
+class ToolExecutionError(LLMBrokerError):
+    def __init__(self, tool_name: str, cause: Exception) -> None:
+        self.tool_name = tool_name
+        self.cause = cause
+        super().__init__(f"Tool '{tool_name}' execution failed: {cause}")
+
+
+class ToolExecutionTimeoutError(ToolExecutionError):
+    def __init__(self, tool_name: str, timeout: float) -> None:
+        self.timeout = timeout
+        super().__init__(tool_name, TimeoutError(f"exceeded {timeout}s timeout"))
+
+
+class ToolLoopMaxIterationsError(LLMBrokerError):
+    def __init__(self, max_iterations: int) -> None:
+        self.max_iterations = max_iterations
+        super().__init__(f"Tool loop exceeded maximum iterations ({max_iterations})")

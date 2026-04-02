@@ -5,8 +5,10 @@ from typing import Any, TypeVar, cast, overload
 
 from pydantic import ValidationError
 
-from llm_actor.client.interface import LLMClientInterface
+from llm_actor.client.interface import LLMClientInterface, ToolCapableClientInterface
 from llm_actor.core.request import LLMRequest
+from llm_actor.core.tools import LLMResponse, ToolResult
+from llm_actor.exceptions import LLMServiceGeneralError
 from llm_actor.logger import BrokerLogger
 from llm_actor.resilience.circuit_breaker import CircuitBreaker
 
@@ -199,3 +201,26 @@ class LLMClientWithCircuitBreaker:
                 )
 
         raise RuntimeError("unreachable: validation loop exhausted without return or raise")
+
+    async def generate_with_tools_async(
+        self,
+        request: LLMRequest,
+        conversation: list[dict[str, Any]],
+    ) -> LLMResponse:
+        if not isinstance(self._client, ToolCapableClientInterface):
+            raise LLMServiceGeneralError(
+                f"Client {type(self._client).__name__} does not implement ToolCapableClientInterface"
+            )
+        return cast(
+            LLMResponse,
+            await self._circuit_breaker.call(
+                self._client.generate_with_tools_async, request, conversation
+            ),
+        )
+
+    def format_tool_results(self, results: list[ToolResult]) -> list[dict[str, Any]]:
+        if not isinstance(self._client, ToolCapableClientInterface):
+            raise LLMServiceGeneralError(
+                f"Client {type(self._client).__name__} does not implement ToolCapableClientInterface"
+            )
+        return self._client.format_tool_results(results)

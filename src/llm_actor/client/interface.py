@@ -1,6 +1,7 @@
 from typing import Any, Protocol, runtime_checkable
 
 from llm_actor.core.request import LLMRequest
+from llm_actor.core.tools import LLMResponse, ToolResult
 
 
 @runtime_checkable
@@ -71,4 +72,17 @@ class LLMClientWithCircuitBreakerInterface(Protocol):
                 Ошибки валидации будут автоматически обработаны LLMClientWithRetry
                 с повторными запросами к LLM.
         """
+        ...
+
+
+@runtime_checkable
+class ToolCapableClientInterface(Protocol):
+    async def generate_with_tools_async(
+        self,
+        request: LLMRequest,
+        conversation: list[dict[str, Any]],
+    ) -> LLMResponse:
+        ...
+
+    def format_tool_results(self, results: list[ToolResult]) -> list[dict[str, Any]]:
         ...

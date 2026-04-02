@@ -1,8 +1,10 @@
+import json
 from typing import Any, cast
 
 from openai import APIConnectionError, APIStatusError, APITimeoutError, AsyncOpenAI, RateLimitError
 
 from llm_actor.core.request import LLMRequest
+from llm_actor.core.tools import LLMResponse, Tool, ToolCall, ToolResult
 from llm_actor.exceptions import (
     LLMServiceGeneralError,
     LLMServiceHTTPError,
@@ -30,7 +32,7 @@ def _map_openai_exception(exc: Exception) -> Exception:
 
 
 class OpenAIAdapter:
-    """Адаптер Async OpenAI SDK с маппингом ошибок в доменные исключения брокера."""
+    """Адаптер Async OpenAI SDK с маппингом ошибок и поддержкой tool calling."""
 
     def __init__(
         self,
@@ -43,13 +45,24 @@ class OpenAIAdapter:
         self._model = model
         self._client = AsyncOpenAI(api_key=api_key, base_url=base_url, **client_options)
 
-    async def generate_async(self, request: LLMRequest) -> str:
-        messages: list[dict[str, str]] = []
+    def _build_messages(
+        self,
+        request: LLMRequest,
+        extra_messages: list[dict[str, Any]] | None = None,
+    ) -> list[dict[str, Any]]:
+        messages: list[dict[str, Any]] = []
         if request.system_prompt:
             messages.append({"role": "system", "content": request.system_prompt})
-        messages.append({"role": "user", "content": request.prompt})
+        if request.messages:
+            messages.extend(request.messages)
+        if request.prompt:
+            messages.append({"role": "user", "content": request.prompt})
+        if extra_messages:
+            messages.extend(extra_messages)
+        return messages
 
-        # extra применяется первым — обязательные поля всегда побеждают
+    async def generate_async(self, request: LLMRequest) -> str:
+        messages = self._build_messages(request)
         payload: dict[str, Any] = dict(request.extra)
         payload["model"] = self._model
         payload["messages"] = messages
@@ -67,11 +80,89 @@ class OpenAIAdapter:
 
         if not completion.choices:
             raise LLMServiceGeneralError("Пустой ответ от OpenAI: нет choices")
-        choice = completion.choices[0]
-        content = choice.message.content
+        content = completion.choices[0].message.content
         if content is None:
             raise LLMServiceGeneralError("Пустой ответ от OpenAI")
         return cast(str, content)
+
+    async def generate_with_tools_async(
+        self,
+        request: LLMRequest,
+        conversation: list[dict[str, Any]],
+    ) -> LLMResponse:
+        messages = self._build_messages(request, extra_messages=conversation or None)
+        resolved_tools = cast(list[Tool], request.tools or [])
+        tools_schema = [tool.build_openai_schema() for tool in resolved_tools]
+
+        payload: dict[str, Any] = dict(request.extra)
+        payload["model"] = self._model
+        payload["messages"] = messages
+        payload["tools"] = tools_schema
+        payload["tool_choice"] = "auto"
+        if request.temperature is not None:
+            payload["temperature"] = request.temperature
+        if request.max_tokens is not None:
+            payload["max_tokens"] = request.max_tokens
+
+        try:
+            completion = await self._client.chat.completions.create(**payload)
+        except (RateLimitError, APITimeoutError, APIConnectionError, APIStatusError) as exc:
+            raise _map_openai_exception(exc) from exc
+
+        if not completion.choices:
+            raise LLMServiceGeneralError("Пустой ответ от OpenAI: нет choices")
+
+        message = completion.choices[0].message
+
+        if message.tool_calls:
+            tool_calls = []
+            for tc in message.tool_calls:
+                try:
+                    arguments = json.loads(tc.function.arguments or "{}")
+                except json.JSONDecodeError as exc:
+                    raise LLMServiceGeneralError(
+                        f"Malformed JSON in tool call arguments for '{tc.function.name}': {exc}"
+                    ) from exc
+                tool_calls.append(ToolCall(id=tc.id, name=tc.function.name, arguments=arguments))
+            assistant_message: dict[str, Any] = {
+                "role": "assistant",
+                "content": message.content or "",
+                "tool_calls": [
+                    {
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {
+                            "name": tc.function.name,
+                            "arguments": tc.function.arguments,
+                        },
+                    }
+                    for tc in message.tool_calls
+                ],
+            }
+            return LLMResponse(
+                content=None,
+                tool_calls=tool_calls,
+                assistant_message=assistant_message,
+            )
+
+        content = message.content
+        if content is None:
+            raise LLMServiceGeneralError("Пустой ответ от OpenAI при tool calling")
+        return LLMResponse(
+            content=content,
+            assistant_message={"role": "assistant", "content": content},
+        )
+
+    def format_tool_results(self, results: list[ToolResult]) -> list[dict[str, Any]]:
+        return [
+            {
+                "role": "tool",
+                "tool_call_id": r.tool_call_id,
+                "name": r.name,
+                "content": f"Error: {r.result}" if r.is_error else r.result,
+            }
+            for r in results
+        ]
 
     async def close(self) -> None:
         await self._client.close()
