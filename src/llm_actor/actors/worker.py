@@ -2,6 +2,7 @@ import asyncio
 import time
 from typing import Any, Literal
 
+from llm_actor import tracing as otel_tracing
 from llm_actor.client.interface import LLMClientWithCircuitBreakerInterface
 from llm_actor.core.messages import ActorMessage
 from llm_actor.exceptions import ActorFailedError, CircuitBreakerOpenError
@@ -91,7 +92,11 @@ class ModelActor:
             return False
         item = get_fut.result()
         self._shared_queue.task_done()
-        self._pending.append(item.message)
+        message = item.message
+        if message.queue_wait_span_closer is not None:
+            message.queue_wait_span_closer()
+            message.queue_wait_span_closer = None
+        self._pending.append(message)
         return True
 
     async def _poll_shared_queue_or_stop(
@@ -139,7 +144,9 @@ class ModelActor:
 
                 if outcome == "timeout":
                     if self._pending:
-                        self._logger.debug(f"Batch timeout, processing {len(self._pending)} messages")
+                        self._logger.debug(
+                            f"Batch timeout, processing {len(self._pending)} messages"
+                        )
                         await self._safe_process_batch()
                     continue
                 if outcome == "stop":
@@ -175,9 +182,7 @@ class ModelActor:
                 f"Batch processed successfully: {batch_size} messages in {duration:.3f}s"
             )
             if self._metrics:
-                self._metrics.batches_processed_counter.labels(
-                    actor_id=self._actor_id
-                ).inc()
+                self._metrics.batches_processed_counter.labels(actor_id=self._actor_id).inc()
                 self._metrics.batch_processing_duration_histogram.labels(
                     actor_id=self._actor_id
                 ).observe(duration)
@@ -188,7 +193,9 @@ class ModelActor:
                 self._metrics.batch_processing_duration_histogram.labels(
                     actor_id=self._actor_id
                 ).observe(duration)
-            self._logger.warning(f"Circuit breaker open, rejecting batch of {batch_size} messages: {e}")
+            self._logger.warning(
+                f"Circuit breaker open, rejecting batch of {batch_size} messages: {e}"
+            )
             self._reject_batch(batch, e)
         except Exception as e:
             duration = time.time() - start_time
@@ -234,17 +241,24 @@ class ModelActor:
             async with self._semaphore:
                 log = self._logger.bind(request_id=msg.id)
                 log.debug("Processing request")
-                try:
-                    result = await self._client.generate(msg.request, msg.response_model)
-                    log.debug("Request processed successfully")
-                    return result
-                except Exception as e:
-                    log.error("Request processing failed: {}", e, exc_info=True)
-                    raise
+                with otel_tracing.attach_extracted_context(msg.otel_context):
+                    tracer = otel_tracing.get_tracer()
+                    with tracer.start_as_current_span(
+                        "llm_actor.actor_process",
+                        attributes={
+                            "llm_actor.request_id": msg.id or "",
+                            "llm_actor.priority": msg.priority,
+                        },
+                    ):
+                        try:
+                            result = await self._client.generate(msg.request, msg.response_model)
+                            log.debug("Request processed successfully")
+                            return result
+                        except Exception as e:
+                            log.error("Request processing failed: {}", e, exc_info=True)
+                            raise
 
-        results = await asyncio.gather(
-            *[limited_ask(msg) for msg in batch], return_exceptions=True
-        )
+        results = await asyncio.gather(*[limited_ask(msg) for msg in batch], return_exceptions=True)
 
         success_count = sum(1 for r in results if not isinstance(r, Exception))
         error_count = len(results) - success_count
@@ -256,7 +270,7 @@ class ModelActor:
 
         for msg, result in zip(batch, results, strict=True):
             if msg.future and not msg.future.done():
-                if isinstance(result, Exception):
+                if isinstance(result, BaseException):
                     msg.future.set_exception(result)
                 else:
                     msg.future.set_result(result)

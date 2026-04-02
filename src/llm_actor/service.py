@@ -1,6 +1,7 @@
 import asyncio
 from typing import Any, TypeVar, cast, overload
 
+from llm_actor import tracing as otel_tracing
 from llm_actor.actors.pool import SupervisedActorPool
 from llm_actor.client.interface import (
     LLMClientInterface,
@@ -157,10 +158,19 @@ class LLMBrokerService:
         priority: int = 10,
     ) -> Any | str:
         request = _coerce_llm_request(prompt)
-        self._logger.debug(
-            f"Processing generate request (response_model={'provided' if response_model else 'None'})"
-        )
-        return await self._pool.generate(request, response_model, priority=priority)
+        tracer = otel_tracing.get_tracer()
+        preview = otel_tracing.truncate_for_span_attribute(request.prompt)
+        with tracer.start_as_current_span(
+            "llm_broker.generate",
+            attributes={
+                "llm_actor.prompt_preview": preview,
+                "llm_actor.priority": priority,
+            },
+        ):
+            self._logger.debug(
+                f"Processing generate request (response_model={'provided' if response_model else 'None'})"
+            )
+            return await self._pool.generate(request, response_model, priority=priority)
 
     async def generate_batch(
         self,
@@ -186,7 +196,7 @@ class LLMBrokerService:
             req = _coerce_llm_request(item)
             preview = req.prompt[:100] if req.prompt else ""
             self._logger.info(f"Request: prompt={preview}..., response_model={response_model}")
-            tasks.append(self._pool.generate(req, response_model, priority=priority))
+            tasks.append(self.generate(req, response_model, priority=priority))
         results = await asyncio.gather(*tasks, return_exceptions=True)
         error_count = sum(1 for r in results if isinstance(r, Exception))
         if error_count > 0:

@@ -1,4 +1,5 @@
 import asyncio
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from uuid import uuid4
 
@@ -12,6 +13,10 @@ class ActorMessage[T]:
     id: str | None = None
     future: asyncio.Future[T] | None = None
     priority: int = 10
+    otel_context: dict[str, str] | None = None
+    queue_wait_span_closer: Callable[[], None] | None = field(
+        default=None, init=False, repr=False, compare=False
+    )
     enqueue_sequence: int | None = field(default=None, init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:

@@ -26,9 +26,7 @@ class CircuitBreaker:
         self._lock = asyncio.Lock()
         self._logger = BrokerLogger.get_logger(name="circuit_breaker")
 
-    async def call(
-        self, func: Callable[..., Awaitable[Any]], *args: Any, **kwargs: Any
-    ) -> Any:
+    async def call(self, func: Callable[..., Awaitable[Any]], *args: Any, **kwargs: Any) -> Any:
         # Проверяем и обновляем состояние под блокировкой; сам вызов — без неё.
         async with self._lock:
             if self._state == "open":
@@ -43,9 +41,7 @@ class CircuitBreaker:
                         raise CircuitBreakerOpenError("Circuit breaker OPEN")
                     retry_in = self._recovery_timeout - (time.time() - self._last_failure_time)
                     self._logger.warning(f"Circuit breaker OPEN, retry in {retry_in:.1f}s")
-                    raise CircuitBreakerOpenError(
-                        f"Circuit breaker OPEN, retry in {retry_in:.1f}s"
-                    )
+                    raise CircuitBreakerOpenError(f"Circuit breaker OPEN, retry in {retry_in:.1f}s")
 
         try:
             result = await func(*args, **kwargs)
@@ -67,7 +63,9 @@ class CircuitBreaker:
         if self._state == "half_open":
             self._logger.info("Circuit breaker recovered (CLOSED)")
         elif self._failure_count > 0:
-            self._logger.debug(f"Request succeeded, failure count reset (was {self._failure_count})")
+            self._logger.debug(
+                f"Request succeeded, failure count reset (was {self._failure_count})"
+            )
         self._failure_count = 0
         self._state = "closed"
 

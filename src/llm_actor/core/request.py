@@ -19,7 +19,4 @@ class LLMRequest:
 
     def __post_init__(self) -> None:
         if self.tools is not None:
-            self.tools = [
-                t if isinstance(t, Tool) else Tool(func=t)
-                for t in self.tools
-            ]
+            self.tools = [t if isinstance(t, Tool) else Tool(func=t) for t in self.tools]

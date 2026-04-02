@@ -27,11 +27,17 @@ async def test_retry_succeeds_after_transient_error():
     settings.LLM_RETRY_BACKOFF_CAP = 1.0
 
     base_client = DummyLLMClient(settings=settings)
-    base_client.set_prompt_errors("test", [
-        LLMServiceOverloadedError("Temporary overload"),
-    ])
+    base_client.set_prompt_errors(
+        "test",
+        [
+            LLMServiceOverloadedError("Temporary overload"),
+        ],
+    )
     circuit_breaker = CircuitBreaker(settings=settings)
-    cb_client = cast(LLMClientWithCircuitBreakerInterface, LLMClientWithCircuitBreaker(base_client, circuit_breaker))
+    cb_client = cast(
+        LLMClientWithCircuitBreakerInterface,
+        LLMClientWithCircuitBreaker(base_client, circuit_breaker),
+    )
     retry_client = LLMClientWithRetry(cb_client, settings)
 
     result = await retry_client.generate(LLMRequest(prompt="test"))
@@ -50,13 +56,19 @@ async def test_retry_exponential_backoff():
     base_client = DummyLLMClient(settings=settings)
     base_client.base_latency = 0.0
     base_client.latency_variance = 0.0
-    base_client.set_prompt_errors("test", [
-        LLMServiceOverloadedError("Temporary overload"),
-        LLMServiceOverloadedError("Temporary overload"),
-        LLMServiceOverloadedError("Temporary overload"),
-    ])
+    base_client.set_prompt_errors(
+        "test",
+        [
+            LLMServiceOverloadedError("Temporary overload"),
+            LLMServiceOverloadedError("Temporary overload"),
+            LLMServiceOverloadedError("Temporary overload"),
+        ],
+    )
     circuit_breaker = CircuitBreaker(settings=settings)
-    cb_client = cast(LLMClientWithCircuitBreakerInterface, LLMClientWithCircuitBreaker(base_client, circuit_breaker))
+    cb_client = cast(
+        LLMClientWithCircuitBreakerInterface,
+        LLMClientWithCircuitBreaker(base_client, circuit_breaker),
+    )
     retry_client = LLMClientWithRetry(cb_client, settings)
 
     sleep_times = []
@@ -87,14 +99,20 @@ async def test_retry_backoff_cap():
     base_client = DummyLLMClient(settings=settings)
     base_client.base_latency = 0.0
     base_client.latency_variance = 0.0
-    base_client.set_prompt_errors("test", [
-        LLMServiceOverloadedError("Temporary overload"),
-        LLMServiceOverloadedError("Temporary overload"),
-        LLMServiceOverloadedError("Temporary overload"),
-        LLMServiceOverloadedError("Temporary overload"),
-    ])
+    base_client.set_prompt_errors(
+        "test",
+        [
+            LLMServiceOverloadedError("Temporary overload"),
+            LLMServiceOverloadedError("Temporary overload"),
+            LLMServiceOverloadedError("Temporary overload"),
+            LLMServiceOverloadedError("Temporary overload"),
+        ],
+    )
     circuit_breaker = CircuitBreaker(settings=settings)
-    cb_client = cast(LLMClientWithCircuitBreakerInterface, LLMClientWithCircuitBreaker(base_client, circuit_breaker))
+    cb_client = cast(
+        LLMClientWithCircuitBreakerInterface,
+        LLMClientWithCircuitBreaker(base_client, circuit_breaker),
+    )
     retry_client = LLMClientWithRetry(cb_client, settings)
 
     sleep_times = []
@@ -121,13 +139,19 @@ async def test_retry_fails_after_max_attempts():
     settings.LLM_RETRY_BASE_BACKOFF = 0.01
 
     base_client = DummyLLMClient(settings=settings)
-    base_client.set_prompt_errors("test", [
-        LLMServiceOverloadedError("Persistent overload"),
-        LLMServiceOverloadedError("Persistent overload"),
-        LLMServiceOverloadedError("Persistent overload"),
-    ])
+    base_client.set_prompt_errors(
+        "test",
+        [
+            LLMServiceOverloadedError("Persistent overload"),
+            LLMServiceOverloadedError("Persistent overload"),
+            LLMServiceOverloadedError("Persistent overload"),
+        ],
+    )
     circuit_breaker = CircuitBreaker(settings=settings)
-    cb_client = cast(LLMClientWithCircuitBreakerInterface, LLMClientWithCircuitBreaker(base_client, circuit_breaker))
+    cb_client = cast(
+        LLMClientWithCircuitBreakerInterface,
+        LLMClientWithCircuitBreaker(base_client, circuit_breaker),
+    )
     retry_client = LLMClientWithRetry(cb_client, settings)
 
     with pytest.raises(LLMServiceOverloadedError):
@@ -143,11 +167,17 @@ async def test_retry_handles_503_error():
     settings.LLM_RETRY_BASE_BACKOFF = 0.01
 
     base_client = DummyLLMClient(settings=settings)
-    base_client.set_prompt_errors("test", [
-        LLMServiceUnavailableError("Service unavailable"),
-    ])
+    base_client.set_prompt_errors(
+        "test",
+        [
+            LLMServiceUnavailableError("Service unavailable"),
+        ],
+    )
     circuit_breaker = CircuitBreaker(settings=settings)
-    cb_client = cast(LLMClientWithCircuitBreakerInterface, LLMClientWithCircuitBreaker(base_client, circuit_breaker))
+    cb_client = cast(
+        LLMClientWithCircuitBreakerInterface,
+        LLMClientWithCircuitBreaker(base_client, circuit_breaker),
+    )
     retry_client = LLMClientWithRetry(cb_client, settings)
 
     result = await retry_client.generate(LLMRequest(prompt="test"))
@@ -164,11 +194,17 @@ async def test_retry_handles_502_504_errors():
 
     for status_code in [502, 504]:
         base_client = DummyLLMClient(settings=settings)
-        base_client.set_prompt_errors("test", [
-            LLMServiceHTTPError(f"HTTP {status_code}", status_code=status_code),
-        ])
+        base_client.set_prompt_errors(
+            "test",
+            [
+                LLMServiceHTTPError(f"HTTP {status_code}", status_code=status_code),
+            ],
+        )
         circuit_breaker = CircuitBreaker(settings=settings)
-        cb_client = cast(LLMClientWithCircuitBreakerInterface, LLMClientWithCircuitBreaker(base_client, circuit_breaker))
+        cb_client = cast(
+            LLMClientWithCircuitBreakerInterface,
+            LLMClientWithCircuitBreaker(base_client, circuit_breaker),
+        )
         retry_client = LLMClientWithRetry(cb_client, settings)
 
         result = await retry_client.generate(LLMRequest(prompt="test"))
@@ -184,11 +220,17 @@ async def test_retry_handles_llm_service_timeout_error():
     settings.LLM_RETRY_BASE_BACKOFF = 0.01
 
     base_client = DummyLLMClient(settings=settings)
-    base_client.set_prompt_errors("test", [
-        LLMServiceTimeoutError("Request timeout"),
-    ])
+    base_client.set_prompt_errors(
+        "test",
+        [
+            LLMServiceTimeoutError("Request timeout"),
+        ],
+    )
     circuit_breaker = CircuitBreaker(settings=settings)
-    cb_client = cast(LLMClientWithCircuitBreakerInterface, LLMClientWithCircuitBreaker(base_client, circuit_breaker))
+    cb_client = cast(
+        LLMClientWithCircuitBreakerInterface,
+        LLMClientWithCircuitBreaker(base_client, circuit_breaker),
+    )
     retry_client = LLMClientWithRetry(cb_client, settings)
 
     result = await retry_client.generate(LLMRequest(prompt="test"))
@@ -205,7 +247,10 @@ async def test_retry_does_not_retry_non_transient_errors():
     base_client = DummyLLMClient(settings=settings)
     base_client.set_prompt_error("test", LLMServiceHTTPError("Bad Request", status_code=400))
     circuit_breaker = CircuitBreaker(settings=settings)
-    cb_client = cast(LLMClientWithCircuitBreakerInterface, LLMClientWithCircuitBreaker(base_client, circuit_breaker))
+    cb_client = cast(
+        LLMClientWithCircuitBreakerInterface,
+        LLMClientWithCircuitBreaker(base_client, circuit_breaker),
+    )
     retry_client = LLMClientWithRetry(cb_client, settings)
 
     with pytest.raises(LLMServiceHTTPError):
@@ -223,9 +268,12 @@ async def test_retry_integration_with_service():
     settings.LLM_BATCH_SIZE = 1
 
     base_client = DummyLLMClient(settings=settings)
-    base_client.set_prompt_errors("test", [
-        LLMServiceOverloadedError("Temporary overload"),
-    ])
+    base_client.set_prompt_errors(
+        "test",
+        [
+            LLMServiceOverloadedError("Temporary overload"),
+        ],
+    )
 
     service = LLMBrokerService(base_client=base_client, settings=settings)
     await service.start()

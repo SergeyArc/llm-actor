@@ -1,10 +1,20 @@
+from __future__ import annotations
+
 import sys
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
+if TYPE_CHECKING:
+    from loguru import Record
 
-def _broker_log_record_patcher(record: dict[str, Any]) -> None:
+try:
+    from opentelemetry import trace as _otel_trace
+except ImportError:
+    _otel_trace = None  # type: ignore[assignment]
+
+
+def _broker_log_record_patcher(record: Record) -> None:
     extra = record["extra"]
     actor_id = extra.get("actor_id")
     pool_id = extra.get("pool_id")
@@ -14,6 +24,16 @@ def _broker_log_record_patcher(record: dict[str, Any]) -> None:
         extra["pool_tag"] = f"[pool {pool_prefix}] "
     else:
         extra["pool_tag"] = ""
+    if _otel_trace is not None:
+        span = _otel_trace.get_current_span()
+        ctx = span.get_span_context()
+        if ctx.is_valid:
+            tid = format(ctx.trace_id, "032x")
+            extra["trace_tag"] = f"[trace={tid}] "
+        else:
+            extra["trace_tag"] = ""
+    else:
+        extra["trace_tag"] = ""
 
 
 class BrokerLogger:
@@ -45,7 +65,7 @@ class BrokerLogger:
         console_format = (
             "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | "
             "<level>{level: <8}</level> | "
-            "{extra[actor_tag]}{extra[pool_tag]}"
+            "{extra[trace_tag]}{extra[actor_tag]}{extra[pool_tag]}"
             "<cyan>{name}</cyan>:<cyan>{function}</cyan> | "
             "<level>{message}</level>"
         )

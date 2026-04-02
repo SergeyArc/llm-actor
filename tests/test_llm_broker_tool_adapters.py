@@ -51,7 +51,9 @@ async def test_openai_adapter_messages_history_before_prompt() -> None:
         completion.choices = [MagicMock(message=MagicMock(content="ok"))]
         return completion
 
-    with patch.object(adapter._client.chat.completions, "create", new=AsyncMock(side_effect=fake_create)):
+    with patch.object(
+        adapter._client.chat.completions, "create", new=AsyncMock(side_effect=fake_create)
+    ):
         await adapter.generate_async(
             LLMRequest(
                 prompt="follow up",
@@ -80,7 +82,9 @@ async def test_openai_adapter_empty_prompt_skipped_with_messages_only() -> None:
         completion.choices = [MagicMock(message=MagicMock(content="ok"))]
         return completion
 
-    with patch.object(adapter._client.chat.completions, "create", new=AsyncMock(side_effect=fake_create)):
+    with patch.object(
+        adapter._client.chat.completions, "create", new=AsyncMock(side_effect=fake_create)
+    ):
         await adapter.generate_async(
             LLMRequest(
                 prompt="",

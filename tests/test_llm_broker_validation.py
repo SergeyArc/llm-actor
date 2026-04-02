@@ -128,9 +128,7 @@ async def test_actor_raises_actor_failed_error_at_threshold():
         loop = asyncio.get_running_loop()
         future: asyncio.Future[str] = loop.create_future()
         msg = ActorMessage(request=LLMRequest(prompt="fail"), future=future)
-        await shared_queue.put(
-            _PrioritizedMessage(priority=msg.priority, sequence=0, message=msg)
-        )
+        await shared_queue.put(_PrioritizedMessage(priority=msg.priority, sequence=0, message=msg))
 
         with pytest.raises(ActorFailedError):
             await actor._task  # type: ignore[misc]

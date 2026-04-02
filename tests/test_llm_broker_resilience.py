@@ -69,14 +69,20 @@ async def test_retry_before_circuit_breaker():
     settings.LLM_BATCH_SIZE = 1
 
     base_client = DummyLLMClient(settings=settings)
-    base_client.set_prompt_errors("retry_success", [
-        LLMServiceOverloadedError("Temporary overload"),
-    ])
-    base_client.set_prompt_errors("retry_fail", [
-        LLMServiceOverloadedError("Persistent overload"),
-        LLMServiceOverloadedError("Persistent overload"),
-        LLMServiceOverloadedError("Persistent overload"),
-    ])
+    base_client.set_prompt_errors(
+        "retry_success",
+        [
+            LLMServiceOverloadedError("Temporary overload"),
+        ],
+    )
+    base_client.set_prompt_errors(
+        "retry_fail",
+        [
+            LLMServiceOverloadedError("Persistent overload"),
+            LLMServiceOverloadedError("Persistent overload"),
+            LLMServiceOverloadedError("Persistent overload"),
+        ],
+    )
 
     service = LLMBrokerService(base_client=base_client, settings=settings)
     await service.start()

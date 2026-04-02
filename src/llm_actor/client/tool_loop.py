@@ -2,6 +2,9 @@ import asyncio
 import inspect
 from typing import Any, cast
 
+from opentelemetry.trace import StatusCode
+
+from llm_actor import tracing as otel_tracing
 from llm_actor.client.interface import (
     LLMClientWithCircuitBreakerInterface,
     ToolCapableClientInterface,
@@ -27,9 +30,7 @@ class ToolCallOrchestratorClient:
         self._settings = settings
         self._logger = BrokerLogger.get_logger(name="tool_loop")
 
-    async def generate(
-        self, request: LLMRequest, response_model: type[Any] | None = None
-    ) -> Any:
+    async def generate(self, request: LLMRequest, response_model: type[Any] | None = None) -> Any:
         if request.tools:
             if response_model is not None:
                 raise ValueError("Combining tools with response_model is not supported")
@@ -93,38 +94,50 @@ class ToolCallOrchestratorClient:
         tool_map: dict[str, Tool],
         tool_timeout: float | None,
     ) -> ToolResult:
-        tool = tool_map.get(call.name)
-        if tool is None:
-            self._logger.warning(f"Tool '{call.name}' not found in tool_map")
-            return ToolResult(
-                tool_call_id=call.id,
-                name=call.name,
-                result=f"Unknown tool: {call.name}",
-                is_error=True,
+        tracer = otel_tracing.get_tracer()
+        with tracer.start_as_current_span(
+            "llm_actor.tool_call",
+            attributes={"llm_actor.tool.name": call.name},
+        ) as span:
+            tool = tool_map.get(call.name)
+            if tool is None:
+                self._logger.warning(f"Tool '{call.name}' not found in tool_map")
+                span.set_status(StatusCode.ERROR, f"Unknown tool: {call.name}")
+                return ToolResult(
+                    tool_call_id=call.id,
+                    name=call.name,
+                    result=f"Unknown tool: {call.name}",
+                    is_error=True,
+                )
+
+            effective_timeout = (
+                tool_timeout
+                if tool_timeout is not None
+                else self._settings.LLM_TOOL_EXECUTION_TIMEOUT
             )
+            self._logger.debug(f"Executing tool '{call.name}' (timeout={effective_timeout}s)")
 
-        effective_timeout = (
-            tool_timeout if tool_timeout is not None else self._settings.LLM_TOOL_EXECUTION_TIMEOUT
-        )
-        self._logger.debug(f"Executing tool '{call.name}' (timeout={effective_timeout}s)")
+            try:
+                if inspect.iscoroutinefunction(tool.func):
+                    coro = tool.func(**call.arguments)
+                else:
+                    coro = asyncio.to_thread(tool.func, **call.arguments)
 
-        try:
-            if inspect.iscoroutinefunction(tool.func):
-                coro = tool.func(**call.arguments)
-            else:
-                coro = asyncio.to_thread(tool.func, **call.arguments)
+                raw_result = await asyncio.wait_for(coro, timeout=effective_timeout)
+                self._logger.debug(f"Tool '{call.name}' executed successfully")
+                return ToolResult(tool_call_id=call.id, name=call.name, result=str(raw_result))
 
-            raw_result = await asyncio.wait_for(coro, timeout=effective_timeout)
-            self._logger.debug(f"Tool '{call.name}' executed successfully")
-            return ToolResult(tool_call_id=call.id, name=call.name, result=str(raw_result))
-
-        except TimeoutError as exc:
-            raise ToolExecutionTimeoutError(call.name, effective_timeout) from exc
-        except Exception as exc:
-            self._logger.warning(f"Tool '{call.name}' raised exception: {exc}")
-            return ToolResult(
-                tool_call_id=call.id,
-                name=call.name,
-                result=str(exc),
-                is_error=True,
-            )
+            except TimeoutError as exc:
+                # Исключение пробрасывается — SDK автоматически вызовет record_exception и set_status.
+                raise ToolExecutionTimeoutError(call.name, effective_timeout) from exc
+            except Exception as exc:
+                # Исключение «глотается» (возвращаем ToolResult), поэтому записываем явно.
+                span.record_exception(exc)
+                span.set_status(StatusCode.ERROR, str(exc))
+                self._logger.warning(f"Tool '{call.name}' raised exception: {exc}")
+                return ToolResult(
+                    tool_call_id=call.id,
+                    name=call.name,
+                    result=str(exc),
+                    is_error=True,
+                )

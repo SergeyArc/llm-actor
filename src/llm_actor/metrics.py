@@ -18,7 +18,9 @@ class MetricsCollector:
             registry=reg,
         )
         self.batches_failed_counter = Counter(
-            "llm_batches_failed_total", "Total number of failed batches", ["actor_id"],
+            "llm_batches_failed_total",
+            "Total number of failed batches",
+            ["actor_id"],
             registry=reg,
         )
         self.batch_processing_duration_histogram = Histogram(
@@ -29,7 +31,8 @@ class MetricsCollector:
             registry=reg,
         )
         self.circuit_breaker_trips_counter = Counter(
-            "llm_circuit_breaker_trips_total", "Total number of circuit breaker trips",
+            "llm_circuit_breaker_trips_total",
+            "Total number of circuit breaker trips",
             registry=reg,
         )
         self.actor_restarts_counter = Counter(

@@ -5,6 +5,7 @@ from typing import Any, TypeVar, cast, overload
 
 from pydantic import ValidationError
 
+from llm_actor import tracing as otel_tracing
 from llm_actor.client.interface import LLMClientInterface, ToolCapableClientInterface
 from llm_actor.core.request import LLMRequest
 from llm_actor.core.tools import LLMResponse, ToolResult
@@ -100,22 +101,41 @@ class LLMClientWithCircuitBreaker:
         self._logger = BrokerLogger.get_logger(name="llm_client")
 
     async def _generate_raw_text(self, request: LLMRequest) -> str:
-        response_str = await self._circuit_breaker.call(self._client.generate_async, request)
-        if response_str is None:
-            raise ValueError("Received None response from client")
-        return cast(str, response_str)
+        tracer = otel_tracing.get_tracer()
+        preview = otel_tracing.truncate_for_span_attribute(request.prompt)
+        with tracer.start_as_current_span(
+            "llm_actor.llm_request",
+            attributes={"llm_actor.prompt_preview": preview},
+        ):
+            response_str = await self._circuit_breaker.call(
+                self._client.generate_async, request
+            )
+            if response_str is None:
+                raise ValueError("Received None response from client")
+            return cast(str, response_str)
 
     def _validate_response_model_output(self, response_str: str, response_model: type[Any]) -> Any:
-        cleaned_response = _extract_json_from_response(response_str)
-        parsed_data = json.loads(cleaned_response)
-        if hasattr(response_model, "model_validate"):
-            return response_model.model_validate(parsed_data)
-        if not isinstance(parsed_data, dict):
-            raise TypeError(
-                f"Expected JSON object for {response_model.__name__}, "
-                f"got {type(parsed_data).__name__}"
-            )
-        return response_model(**parsed_data)
+        tracer = otel_tracing.get_tracer()
+        preview = otel_tracing.truncate_for_span_attribute(response_str)
+        with tracer.start_as_current_span(
+            "llm_actor.validate",
+            attributes={
+                "llm_actor.response_preview": preview,
+                "llm_actor.response_model": getattr(
+                    response_model, "__name__", str(response_model)
+                ),
+            },
+        ):
+            cleaned_response = _extract_json_from_response(response_str)
+            parsed_data = json.loads(cleaned_response)
+            if hasattr(response_model, "model_validate"):
+                return response_model.model_validate(parsed_data)
+            if not isinstance(parsed_data, dict):
+                raise TypeError(
+                    f"Expected JSON object for {response_model.__name__}, "
+                    f"got {type(parsed_data).__name__}"
+                )
+            return response_model(**parsed_data)
 
     def _log_validation_retry(
         self,

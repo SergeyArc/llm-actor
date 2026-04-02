@@ -118,18 +118,21 @@ class AnthropicAdapter:
         except (RateLimitError, APITimeoutError, APIConnectionError, APIStatusError) as exc:
             raise _map_anthropic_exception(exc) from exc
 
-        tool_use_blocks = [b for b in message.content if hasattr(b, "type") and b.type == "tool_use"]
+        tool_use_blocks = [
+            b for b in message.content if hasattr(b, "type") and b.type == "tool_use"
+        ]
         if tool_use_blocks:
             tool_calls = [
-                ToolCall(id=b.id, name=b.name, arguments=dict(b.input))
-                for b in tool_use_blocks
+                ToolCall(id=b.id, name=b.name, arguments=dict(b.input)) for b in tool_use_blocks
             ]
             all_blocks: list[dict[str, Any]] = []
             for b in message.content:
                 if not hasattr(b, "type"):
                     continue
                 if b.type == "tool_use":
-                    all_blocks.append({"type": "tool_use", "id": b.id, "name": b.name, "input": dict(b.input)})
+                    all_blocks.append(
+                        {"type": "tool_use", "id": b.id, "name": b.name, "input": dict(b.input)}
+                    )
                 elif b.type == "text" and hasattr(b, "text"):
                     all_blocks.append({"type": "text", "text": b.text})
             assistant_message: dict[str, Any] = {"role": "assistant", "content": all_blocks}

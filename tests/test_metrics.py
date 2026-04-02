@@ -40,16 +40,12 @@ async def test_batches_processed_counter_increments(
     metrics_service: tuple[LLMBrokerService, CollectorRegistry],
 ) -> None:
     service, registry = metrics_service
-    before = registry.get_sample_value(
-        "llm_batches_processed_total", {"actor_id": "actor-0"}
-    )
+    before = registry.get_sample_value("llm_batches_processed_total", {"actor_id": "actor-0"})
     assert before in (None, 0.0)
 
     await service.generate("metrics_ok_prompt")
 
-    after = registry.get_sample_value(
-        "llm_batches_processed_total", {"actor_id": "actor-0"}
-    )
+    after = registry.get_sample_value("llm_batches_processed_total", {"actor_id": "actor-0"})
     assert after == 1.0
 
 

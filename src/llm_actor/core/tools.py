@@ -58,7 +58,9 @@ class Tool:
             "function": {
                 "name": self.name,
                 "description": self.description or "",
-                "parameters": self.schema_override if self.schema_override is not None else self._infer_schema(),
+                "parameters": self.schema_override
+                if self.schema_override is not None
+                else self._infer_schema(),
             },
         }
 
@@ -66,7 +68,9 @@ class Tool:
         return {
             "name": self.name,
             "description": self.description or "",
-            "input_schema": self.schema_override if self.schema_override is not None else self._infer_schema(),
+            "input_schema": self.schema_override
+            if self.schema_override is not None
+            else self._infer_schema(),
         }
 
     def _infer_schema(self) -> dict[str, Any]:

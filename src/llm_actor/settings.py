@@ -52,4 +52,3 @@ class LLMBrokerSettings(BaseSettings):
         if v <= 0:
             raise ValueError(f"Value must be > 0, got {v}")
         return v
-

@@ -48,7 +48,9 @@ class LLMClientWithRetry:
         settings: LLMBrokerSettings,
     ) -> None:
         if settings.LLM_RETRY_MAX_ATTEMPTS < 1:
-            raise ValueError(f"LLM_RETRY_MAX_ATTEMPTS must be >= 1, got {settings.LLM_RETRY_MAX_ATTEMPTS}")
+            raise ValueError(
+                f"LLM_RETRY_MAX_ATTEMPTS must be >= 1, got {settings.LLM_RETRY_MAX_ATTEMPTS}"
+            )
         self._client = base_client
         self._max_attempts = settings.LLM_RETRY_MAX_ATTEMPTS
         self._base_backoff = settings.LLM_RETRY_BASE_BACKOFF

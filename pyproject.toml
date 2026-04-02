@@ -13,6 +13,7 @@ dependencies = [
     "pydantic-settings~=2.5.2",
     "loguru>=0.7.0",
     "prometheus-client>=0.19.0",
+    "opentelemetry-api>=1.25.0",
 ]
 
 [project.optional-dependencies]
@@ -25,6 +26,7 @@ dev = [
     "pytest-asyncio>=0.23.0",
     "mypy>=1.11.0",
     "ruff>=0.6.0",
+    "opentelemetry-sdk>=1.25.0",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -75,6 +77,10 @@ plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
 module = "anthropic"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "openai"
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

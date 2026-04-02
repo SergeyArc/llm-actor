@@ -73,7 +73,9 @@ async def test_tool_loop_sync_tool() -> None:
     ]
     cb.format_tool_results.return_value = []
 
-    with patch("llm_actor.client.tool_loop.asyncio.to_thread", new_callable=AsyncMock) as mock_to_thread:
+    with patch(
+        "llm_actor.client.tool_loop.asyncio.to_thread", new_callable=AsyncMock
+    ) as mock_to_thread:
         mock_to_thread.return_value = 5
         orchestrator = ToolCallOrchestratorClient(cb, LLMBrokerSettings())  # type: ignore[arg-type]
         req = LLMRequest(prompt="q", tools=[Tool(func=sync_add)])
@@ -232,12 +234,16 @@ async def test_generate_with_tools_raises_if_response_model_set() -> None:
 @pytest.mark.asyncio
 async def test_generate_with_tools_raises_if_client_not_tool_capable() -> None:
     class _Bare:
-        async def generate(self, request: LLMRequest, response_model: type[Any] | None = None) -> str:
+        async def generate(
+            self, request: LLMRequest, response_model: type[Any] | None = None
+        ) -> str:
             return "x"
 
     orchestrator = ToolCallOrchestratorClient(_Bare(), LLMBrokerSettings())  # type: ignore[arg-type]
     req = LLMRequest(prompt="q", tools=[Tool(func=lambda: 1, name="t")])
-    with pytest.raises(LLMServiceGeneralError, match="does not implement ToolCapableClientInterface"):
+    with pytest.raises(
+        LLMServiceGeneralError, match="does not implement ToolCapableClientInterface"
+    ):
         await orchestrator.generate(req)
 
 

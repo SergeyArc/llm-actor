@@ -20,7 +20,9 @@ async def test_openai_adapter_maps_rate_limit_to_overloaded() -> None:
     async def raise_rl(**_kwargs: object) -> None:
         raise RateLimitError("rate limited", response=MagicMock(), body=None)
 
-    with patch.object(adapter._client.chat.completions, "create", new=AsyncMock(side_effect=raise_rl)):
+    with patch.object(
+        adapter._client.chat.completions, "create", new=AsyncMock(side_effect=raise_rl)
+    ):
         with pytest.raises(LLMServiceOverloadedError):
             await adapter.generate_async(LLMRequest(prompt="x"))
     await adapter.close()
@@ -37,7 +39,9 @@ async def test_openai_adapter_passes_temperature_and_extra_to_sdk() -> None:
         completion.choices = [MagicMock(message=MagicMock(content="ok"))]
         return completion
 
-    with patch.object(adapter._client.chat.completions, "create", new=AsyncMock(side_effect=fake_create)):
+    with patch.object(
+        adapter._client.chat.completions, "create", new=AsyncMock(side_effect=fake_create)
+    ):
         out = await adapter.generate_async(
             LLMRequest(prompt="Hello", temperature=0.8, extra={"top_p": 0.9})
         )
@@ -63,7 +67,9 @@ async def test_openai_adapter_extra_does_not_overwrite_mandatory_fields() -> Non
         completion.choices = [MagicMock(message=MagicMock(content="ok"))]
         return completion
 
-    with patch.object(adapter._client.chat.completions, "create", new=AsyncMock(side_effect=fake_create)):
+    with patch.object(
+        adapter._client.chat.completions, "create", new=AsyncMock(side_effect=fake_create)
+    ):
         await adapter.generate_async(
             LLMRequest(prompt="Hello", extra={"model": "evil-model", "messages": []})
         )
@@ -82,7 +88,9 @@ async def test_openai_adapter_empty_choices_raises_domain_error() -> None:
         completion.choices = []
         return completion
 
-    with patch.object(adapter._client.chat.completions, "create", new=AsyncMock(side_effect=fake_create)):
+    with patch.object(
+        adapter._client.chat.completions, "create", new=AsyncMock(side_effect=fake_create)
+    ):
         with pytest.raises(LLMServiceGeneralError):
             await adapter.generate_async(LLMRequest(prompt="x"))
     await adapter.close()
@@ -100,7 +108,9 @@ async def test_openai_adapter_stop_sequences_none_not_sent() -> None:
         completion.choices = [MagicMock(message=MagicMock(content="ok"))]
         return completion
 
-    with patch.object(adapter._client.chat.completions, "create", new=AsyncMock(side_effect=fake_create)):
+    with patch.object(
+        adapter._client.chat.completions, "create", new=AsyncMock(side_effect=fake_create)
+    ):
         await adapter.generate_async(LLMRequest(prompt="x", stop_sequences=None))
     assert "stop" not in captured
     await adapter.close()
@@ -118,7 +128,9 @@ async def test_openai_adapter_stop_sequences_empty_list_sent() -> None:
         completion.choices = [MagicMock(message=MagicMock(content="ok"))]
         return completion
 
-    with patch.object(adapter._client.chat.completions, "create", new=AsyncMock(side_effect=fake_create)):
+    with patch.object(
+        adapter._client.chat.completions, "create", new=AsyncMock(side_effect=fake_create)
+    ):
         await adapter.generate_async(LLMRequest(prompt="x", stop_sequences=[]))
     assert captured["stop"] == []
     await adapter.close()
@@ -142,9 +154,7 @@ async def test_openai_compatible_adapter_passes_base_url() -> None:
     with patch("llm_actor.client.adapters.openai.AsyncOpenAI") as mock_openai_cls:
         mock_openai_cls.return_value = MagicMock()
         OpenAICompatibleAdapter(api_key="k", model="m", base_url="http://localhost:11434/v1")
-    mock_openai_cls.assert_called_once_with(
-        api_key="k", base_url="http://localhost:11434/v1"
-    )
+    mock_openai_cls.assert_called_once_with(api_key="k", base_url="http://localhost:11434/v1")
 
 
 @pytest.mark.asyncio
@@ -158,7 +168,5 @@ async def test_from_openai_compatible_factory_builds_service() -> None:
         svc = LLMBrokerService.from_openai_compatible(
             api_key="k", model="m", base_url="http://localhost:11434/v1"
         )
-    ctor_mock.assert_called_once_with(
-        api_key="k", model="m", base_url="http://localhost:11434/v1"
-    )
+    ctor_mock.assert_called_once_with(api_key="k", model="m", base_url="http://localhost:11434/v1")
     assert svc._base_client is mock_base

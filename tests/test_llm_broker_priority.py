@@ -91,7 +91,8 @@ async def test_high_priority_processed_before_low() -> None:
 async def test_low_priority_tasks_complete_despite_high_priority_flood(service) -> None:
     high_priority, low_priority = 1, 100
     high_tasks = [
-        asyncio.create_task(service.generate(f"high-{i}", priority=high_priority)) for i in range(20)
+        asyncio.create_task(service.generate(f"high-{i}", priority=high_priority))
+        for i in range(20)
     ]
     low_tasks = [
         asyncio.create_task(service.generate(f"low-{i}", priority=low_priority)) for i in range(5)
