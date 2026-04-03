@@ -106,6 +106,29 @@ class LLMBrokerService:
         )
         return cls(base_client=base, settings=settings, metrics=metrics)
 
+    @classmethod
+    def from_gigachat(
+        cls,
+        *,
+        credentials: str | None = None,
+        model: str | None = None,
+        scope: str | None = None,
+        verify_ssl_certs: bool = True,
+        settings: LLMBrokerSettings | None = None,
+        metrics: MetricsCollector | None = None,
+        **client_options: Any,
+    ) -> "LLMBrokerService":
+        from llm_actor.client.adapters.gigachat import GigaChatAdapter
+
+        base = GigaChatAdapter(
+            credentials=credentials,
+            model=model,
+            scope=scope,
+            verify_ssl_certs=verify_ssl_certs,
+            **client_options,
+        )
+        return cls(base_client=base, settings=settings, metrics=metrics)
+
     @property
     def pool(self) -> SupervisedActorPool:
         """Доступ к пулу акторов для мониторинга (используется в тестах и API для get_health_status())."""

@@ -16,3 +16,10 @@ try:
     __all__ += ["AnthropicAdapter"]
 except ImportError:
     pass
+
+try:
+    from llm_actor.client.adapters.gigachat import GigaChatAdapter
+
+    __all__ += ["GigaChatAdapter"]
+except ImportError:
+    pass
