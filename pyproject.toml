@@ -7,7 +7,7 @@ name = "llm-actor"
 version = "0.1.0"
 description = "LLM actor: pool, circuit breaker, retries, metrics"
 authors = [
-    { name = "Sergey Ark", email = "[sergey-vd@outlook.com]" }
+    { name = "Sergey Ark", email = "sergey-vd@outlook.com" }
 ]
 license = { text = "MIT" }
 readme = "README.md"
