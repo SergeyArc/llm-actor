@@ -103,7 +103,7 @@ class OpenAIAdapter:
         payload["model"] = self._model
         payload["messages"] = messages
         payload["tools"] = tools_schema
-        
+
         # Unless overridden in request.extra
         if "tool_choice" not in payload:
             payload["tool_choice"] = "auto"

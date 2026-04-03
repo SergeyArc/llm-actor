@@ -7,9 +7,12 @@ from __future__ import annotations
 
 import asyncio
 import os
-from dotenv import load_dotenv
 from typing import Literal
+
+from dotenv import load_dotenv
+
 from llm_actor import LLMActorService, LLMRequest
+
 
 # 1. Define tools as regular Python functions
 # The functions should have docstrings as the LLM uses them to understand the tool.
@@ -23,10 +26,12 @@ def get_current_weather(location: str, unit: Literal["celsius", "fahrenheit"] = 
     else:
         return f"25° {unit}, Unknown condition"
 
+
 def get_city_forecast(city: str) -> str:
     """Get a 3-day weather forecast for the city."""
     # Simulation
     return f"Next 3 days in {city}: rain tomorrow, clear later."
+
 
 async def main() -> None:
     # Setup configuration
@@ -37,7 +42,7 @@ async def main() -> None:
 
     # 2. Setup Service
     if base_url:
-         service = LLMActorService.from_openai_compatible(
+        service = LLMActorService.from_openai_compatible(
             api_key=api_key, model=model, base_url=base_url
         )
     else:
@@ -49,17 +54,18 @@ async def main() -> None:
         request = LLMRequest(
             prompt="What's the weather in London and Moscow right now?",
             # You can pass regular functions; LLM Actor handles registration.
-            tools=[get_current_weather, get_city_forecast], 
+            tools=[get_current_weather, get_city_forecast],
             # Optional: System instructions
-            system_prompt="You are a helpful weather assistant."
+            system_prompt="You are a helpful weather assistant.",
         )
 
         print("\nRequest: What's the weather in London and Moscow right now?\n")
-        
+
         # 4. LLM Actor will call both London and Moscow functions in parallel!
         answer = await service.generate(request)
-        
+
         print(f"Final Answer: {answer}\n")
+
 
 if __name__ == "__main__":
     asyncio.run(main())

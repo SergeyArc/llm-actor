@@ -7,6 +7,7 @@ from llm_actor import LLMActorService, LLMRequest
 # Integration tests against real GigaChat API.
 # Run with pytest --integration.
 
+
 @pytest.fixture
 def gigachat_credentials():
     creds = os.getenv("GIGACHAT_CREDENTIALS")
@@ -14,21 +15,20 @@ def gigachat_credentials():
         pytest.skip("GIGACHAT_CREDENTIALS not set")
     return creds
 
+
 @pytest.mark.asyncio
 async def test_real_gigachat_tool_calling(gigachat_credentials):
     model = os.getenv("GIGACHAT_MODEL", "Sber/GigaChat-Max-V2")
     base_url = os.getenv("LLM_BASE_URL", "https://inference.airi.net:46783/v1")
-    
+
     service = LLMActorService.from_gigachat(
-        credentials=gigachat_credentials,
-        model=model,
-        base_url=base_url
+        credentials=gigachat_credentials, model=model, base_url=base_url
     )
-    
+
     async def get_current_time() -> str:
         """Returns current system time."""
         return "12:34:56"
-        
+
     await service.start()
     try:
         prompt = "Который сейчас час? Используй инструмент."

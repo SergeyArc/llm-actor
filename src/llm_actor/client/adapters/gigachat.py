@@ -75,12 +75,14 @@ class GigaChatAdapter(ToolCapableClientInterface):
         # Tool-loop history takes precedence when present
         if conversation:
             for m in conversation:
-                msgs.append(Messages(
-                    role=m["role"], 
-                    content=m.get("content") or "",
-                    name=m.get("name"),
-                    function_call=m.get("function_call")
-                ))
+                msgs.append(
+                    Messages(
+                        role=m["role"],
+                        content=m.get("content") or "",
+                        name=m.get("name"),
+                        function_call=m.get("function_call"),
+                    )
+                )
         elif request.messages:
             for m in request.messages:
                 msgs.append(Messages(role=m.get("role", MessagesRole.USER), content=m["content"]))
@@ -151,9 +153,7 @@ class GigaChatAdapter(ToolCapableClientInterface):
                 raw_args = (
                     json.loads(fc.arguments) if isinstance(fc.arguments, str) else fc.arguments
                 )
-                tool_args: dict[str, Any] = (
-                    raw_args if isinstance(raw_args, dict) else {}
-                )
+                tool_args: dict[str, Any] = raw_args if isinstance(raw_args, dict) else {}
                 tool_calls.append(
                     ToolCall(
                         id=f"call_{fc.name}",

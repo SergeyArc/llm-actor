@@ -9,6 +9,7 @@ from llm_actor.exceptions import LLMServiceOverloadedError
 # Skip if gigachat extra is not installed
 pytest.importorskip("gigachat")
 
+
 @pytest.mark.asyncio
 async def test_gigachat_adapter_build_payload_basic():
     # Mock gigachat.GigaChat inside adapter __init__
@@ -16,24 +17,26 @@ async def test_gigachat_adapter_build_payload_basic():
         adapter = GigaChatAdapter(credentials="test_creds", model="GigaChat-Pro")
         assert adapter._model == "GigaChat-Pro"
 
+
 @pytest.mark.asyncio
 async def test_gigachat_adapter_generate_async_success():
     with patch("gigachat.GigaChat") as mock_class:
         mock_client = mock_class.return_value
         mock_client.achat = AsyncMock()
-        
+
         # Fake GigaChat API response
         mock_response = MagicMock()
         mock_choice = MagicMock()
         mock_choice.message.content = "GigaResponse"
         mock_response.choices = [mock_choice]
         mock_client.achat.return_value = mock_response
-        
+
         adapter = GigaChatAdapter(credentials="test", model="GigaChat-Pro")
         res = await adapter.generate_async(LLMRequest(prompt="test"))
-        
+
         assert res == "GigaResponse"
         assert mock_client.achat.called
+
 
 @pytest.mark.asyncio
 async def test_gigachat_adapter_maps_errors():
@@ -54,10 +57,12 @@ async def test_gigachat_adapter_maps_errors():
         with pytest.raises(LLMServiceOverloadedError):
             await adapter.generate_async(LLMRequest(prompt="test"))
 
+
 @pytest.mark.asyncio
 async def test_from_gigachat_factory():
     with patch("llm_actor.client.adapters.gigachat.GigaChatAdapter") as mock_adapter:
         from llm_actor import LLMActorService
+
         svc = LLMActorService.from_gigachat(credentials="abc", model="pro")
         assert svc is not None
         mock_adapter.assert_called_once()
