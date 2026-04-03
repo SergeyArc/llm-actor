@@ -152,13 +152,13 @@ async def test_anthropic_adapter_non_text_block_raises_descriptive_error() -> No
     adapter = AnthropicAdapter(api_key="sk-test", model="claude-3-5-sonnet-20241022")
 
     async def fake_create(**_kwargs: object) -> MagicMock:
-        tool_block = MagicMock(spec=[])  # нет атрибута text
+        tool_block = MagicMock(spec=[])  # no .text attribute
         message = MagicMock()
         message.content = [tool_block]
         return message
 
     with patch.object(adapter._client.messages, "create", new=AsyncMock(side_effect=fake_create)):
-        with pytest.raises(LLMServiceGeneralError, match="нетекстовый ответ"):
+        with pytest.raises(LLMServiceGeneralError, match="non-text response"):
             await adapter.generate_async(LLMRequest(prompt="x"))
     await adapter.close()
 

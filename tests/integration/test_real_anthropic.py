@@ -1,9 +1,11 @@
 import os
+
 import pytest
+
 from llm_actor import LLMActorService, LLMRequest
 
-# Интеграционный тест для Anthropic SDK (или совместимых моделей типа Qwen)
-# Запускается только с флагом --integration
+# Integration tests for Anthropic SDK (or Qwen-compatible endpoints).
+# Run with pytest --integration.
 
 @pytest.fixture
 def anthropic_api_key():

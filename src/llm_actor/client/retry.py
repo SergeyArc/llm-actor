@@ -17,13 +17,13 @@ from llm_actor.settings import LLMActorSettings
 
 def _is_transient_error(exc: Exception) -> bool:
     """
-    Проверяет, является ли ошибка временной (transient) и подлежит ли retry.
+    Return True if the exception is transient and the request may be retried.
 
     Args:
-        exc: Исключение для проверки
+        exc: Exception to classify.
 
     Returns:
-        True если ошибка временная и можно повторить запрос
+        True if the error is transient.
     """
     if isinstance(exc, LLMServiceOverloadedError):
         return True
@@ -39,7 +39,7 @@ def _is_transient_error(exc: Exception) -> bool:
 
 class LLMClientWithRetry:
     """
-    Транспортная обертка над LLM клиентом с retry для transient API ошибок.
+    Transport wrapper that retries the inner LLM client on transient API errors.
     """
 
     def __init__(
@@ -61,17 +61,17 @@ class LLMClientWithRetry:
         self, request: LLMRequest, response_model: type[Any] | None = None
     ) -> Any | str:
         """
-        Генерирует ответ от LLM с автоматическими повторами при transient API ошибках.
+        Generate with automatic retries on transient API errors.
 
         Args:
-            request: Параметры генерации
-            response_model: Опциональная Pydantic модель для валидации ответа
+            request: Generation parameters.
+            response_model: Optional Pydantic model for response validation.
 
         Returns:
-            Если response_model указан - валидированный объект модели, иначе строка
+            Validated model instance if response_model is set; otherwise string.
 
         Raises:
-            Exception: При ошибках после исчерпания попыток
+            Exception: After all attempts are exhausted or on non-transient errors.
         """
         return await self._generate_with_transport_retry(request, response_model)
 

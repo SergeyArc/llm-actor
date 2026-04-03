@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 class DummyLLMClient:
-    """stub LLM клиент для тестирования, имитирующий поведение реального LLM-клиента."""
+    """Test double mimicking a real LLM HTTP client."""
 
     def __init__(self, settings: LLMActorSettings) -> None:
         self.call_count = 0
@@ -35,7 +35,7 @@ class DummyLLMClient:
         self.total_output_tokens = 0
 
     def _estimate_tokens(self, text: str) -> int:
-        """Приблизительная оценка количества токенов (1 токен ≈ 4 символа)."""
+        """Rough token count (~4 characters per token)."""
         return max(1, len(text) // 4)
 
     def set_prompt_response_sequence(self, prompt_key: str, responses: list[str] | None) -> None:
@@ -70,7 +70,7 @@ class DummyLLMClient:
         return sequence[index]
 
     def _calculate_latency(self, prompt: str, response_text: str) -> float:
-        """Вычисляет задержку на основе длины промпта и ответа."""
+        """Simulated latency from prompt and response length."""
         input_tokens = self._estimate_tokens(prompt)
         output_tokens = self._estimate_tokens(response_text)
 
@@ -93,7 +93,7 @@ class DummyLLMClient:
             self.prompt_errors[prompt] = errors
 
     def _should_fail(self, prompt: str) -> Exception | None:
-        """Определяет, должна ли произойти ошибка и какого типа."""
+        """Return the next configured error for this prompt, if any."""
         self.call_count += 1
 
         if prompt in self.prompt_errors:

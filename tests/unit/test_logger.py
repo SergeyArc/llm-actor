@@ -1,6 +1,7 @@
-from unittest.mock import MagicMock, patch
-import pytest
+from unittest.mock import patch
+
 from llm_actor.logger import ActorLogger, _actor_log_record_patcher
+
 
 def test_actor_log_record_patcher_basic():
     record = {"extra": {"actor_id": "actor-123", "pool_id": "pool-456"}}

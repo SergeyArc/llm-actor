@@ -20,7 +20,7 @@ from tests.dummy_llm_client import DummyLLMClient
 
 
 async def test_retry_succeeds_after_transient_error():
-    """Тест успешного retry после временной ошибки."""
+    """Retry succeeds after one transient error."""
     settings = LLMActorSettings()
     settings.LLM_RETRY_MAX_ATTEMPTS = 3
     settings.LLM_RETRY_BASE_BACKOFF = 0.1
@@ -47,7 +47,7 @@ async def test_retry_succeeds_after_transient_error():
 
 
 async def test_retry_exponential_backoff():
-    """Тест exponential backoff при retry."""
+    """Retry uses exponential backoff."""
     settings = LLMActorSettings()
     settings.LLM_RETRY_MAX_ATTEMPTS = 4
     settings.LLM_RETRY_BASE_BACKOFF = 0.1
@@ -90,7 +90,7 @@ async def test_retry_exponential_backoff():
 
 
 async def test_retry_backoff_cap():
-    """Тест ограничения максимальной задержки backoff."""
+    """Backoff delays are capped."""
     settings = LLMActorSettings()
     settings.LLM_RETRY_MAX_ATTEMPTS = 5
     settings.LLM_RETRY_BASE_BACKOFF = 1.0
@@ -133,7 +133,7 @@ async def test_retry_backoff_cap():
 
 
 async def test_retry_fails_after_max_attempts():
-    """Тест провала после исчерпания всех попыток."""
+    """Fails after max attempts on persistent transient errors."""
     settings = LLMActorSettings()
     settings.LLM_RETRY_MAX_ATTEMPTS = 3
     settings.LLM_RETRY_BASE_BACKOFF = 0.01
@@ -161,7 +161,7 @@ async def test_retry_fails_after_max_attempts():
 
 
 async def test_retry_handles_503_error():
-    """Тест обработки ошибки 503 (Service Unavailable)."""
+    """503 Service Unavailable is retried."""
     settings = LLMActorSettings()
     settings.LLM_RETRY_MAX_ATTEMPTS = 3
     settings.LLM_RETRY_BASE_BACKOFF = 0.01
@@ -187,7 +187,7 @@ async def test_retry_handles_503_error():
 
 
 async def test_retry_handles_502_504_errors():
-    """Тест обработки ошибок 502 и 504 (Bad Gateway, Gateway Timeout)."""
+    """502 and 504 HTTP errors are retried."""
     settings = LLMActorSettings()
     settings.LLM_RETRY_MAX_ATTEMPTS = 3
     settings.LLM_RETRY_BASE_BACKOFF = 0.01
@@ -214,7 +214,7 @@ async def test_retry_handles_502_504_errors():
 
 
 async def test_retry_handles_llm_service_timeout_error():
-    """Тест retry при LLMServiceTimeoutError."""
+    """LLMServiceTimeoutError triggers retry."""
     settings = LLMActorSettings()
     settings.LLM_RETRY_MAX_ATTEMPTS = 3
     settings.LLM_RETRY_BASE_BACKOFF = 0.01
@@ -240,7 +240,7 @@ async def test_retry_handles_llm_service_timeout_error():
 
 
 async def test_retry_does_not_retry_non_transient_errors():
-    """Тест что не-transient ошибки не повторяются."""
+    """Non-transient errors are not retried."""
     settings = LLMActorSettings()
     settings.LLM_RETRY_MAX_ATTEMPTS = 3
 
@@ -260,7 +260,7 @@ async def test_retry_does_not_retry_non_transient_errors():
 
 
 async def test_retry_integration_with_service():
-    """Интеграционный тест retry логики в составе LLMActorService."""
+    """End-to-end retry through LLMActorService."""
     settings = LLMActorSettings()
     settings.LLM_RETRY_MAX_ATTEMPTS = 3
     settings.LLM_RETRY_BASE_BACKOFF = 0.01

@@ -108,7 +108,7 @@ async def test_low_priority_tasks_complete_despite_high_priority_flood(service) 
 
 @pytest.mark.asyncio
 async def test_ac5b_item_not_lost_when_get_and_stop_simultaneous() -> None:
-    """AC 5b: если get_fut и stop_fut оба в done — элемент не теряется."""
+    """AC 5b: item not lost when get_fut and stop_fut both complete."""
     settings = LLMActorSettings()
     queue: asyncio.PriorityQueue[Any] = asyncio.PriorityQueue()
     msg = ActorMessage(request=LLMRequest(prompt="simultaneous"))

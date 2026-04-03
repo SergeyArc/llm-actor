@@ -14,7 +14,7 @@ from tests.dummy_llm_client import DummyLLMClient
 
 
 async def test_circuit_breaker_opens_after_threshold(service, mock_llm_response):
-    """Тест открытия circuit breaker после превышения порога ошибок."""
+    """Circuit breaker opens after error threshold."""
     failure_prompt = "failure"
     for i in range(6):
         mock_llm_response[f"{failure_prompt}_{i}"] = RuntimeError(f"Error {i}")
@@ -30,7 +30,7 @@ async def test_circuit_breaker_opens_after_threshold(service, mock_llm_response)
 
 
 async def test_overload_error_when_queue_full():
-    """Тест перегрузки при заполнении очереди актора."""
+    """OverloadError when actor queue is saturated."""
     settings = LLMActorSettings()
     settings.LLM_MAX_QUEUE_SIZE = 10
     settings.LLM_NUM_ACTORS = 1
@@ -60,7 +60,7 @@ async def test_overload_error_when_queue_full():
 
 
 async def test_retry_before_circuit_breaker():
-    """Тест что retry логика работает перед circuit breaker для transient ошибок."""
+    """Transient errors are retried before circuit breaker trips."""
     settings = LLMActorSettings()
     settings.LLM_RETRY_MAX_ATTEMPTS = 3
     settings.LLM_RETRY_BASE_BACKOFF = 0.01

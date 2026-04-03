@@ -7,40 +7,36 @@ from llm_actor.core.tools import LLMResponse, ToolResult
 @runtime_checkable
 class LLMClientInterface(Protocol):
     """
-    Интерфейс для внешних LLM клиентов, используемых в llm_actor.
+    Contract for external LLM clients used by llm_actor.
 
-    ВАЖНО: Внешние клиенты НЕ должны реализовывать retry логику самостоятельно.
-    Retry механизм с exponential backoff обеспечивается брокером на уровне
-    LLMActorService через LLMClientWithRetry.
+    IMPORTANT: Implementations must NOT implement their own transport retry.
+    Exponential backoff retries are provided by the broker via LLMClientWithRetry
+    inside LLMActorService.
 
-    Реализации должны просто выбрасывать соответствующие исключения при ошибках:
-    - LLMServiceOverloadedError (429) - при перегрузке API
-    - LLMServiceUnavailableError (503) - при недоступности сервиса
-    - LLMServiceHTTPError (502, 503, 504) - при сетевых ошибках
-    - LLMServiceTimeoutError - при таймаутах транспорта к LLM
+    On failure, raise the appropriate exceptions:
+    - LLMServiceOverloadedError (429) — API rate limit / overload
+    - LLMServiceUnavailableError (503) — service unavailable
+    - LLMServiceHTTPError (502, 503, 504) — transient HTTP errors
+    - LLMServiceTimeoutError — transport timeouts to the LLM
 
-    Эти ошибки будут автоматически обработаны retry wrapper (LLMClientWithRetry)
-    с применением exponential backoff на уровне брокера.
+    LLMClientWithRetry will handle these with exponential backoff at the broker level.
     """
 
     async def generate_async(self, request: LLMRequest) -> str:
         """
-        Генерирует ответ от LLM на основе запроса.
+        Produce a single LLM completion for the given request.
 
-        Внешние клиенты должны выполнять один HTTP-запрос к LLM API без retry логики.
-        Retry механизм обеспечивается брокером.
+        Perform one HTTP call to the LLM API without retry logic; the broker handles retries.
 
         Args:
-            request: Параметры генерации (промпт, температура, extra и т.д.)
+            request: Generation parameters (prompt, temperature, extra, etc.)
 
         Returns:
-            Строка с ответом от LLM (не None)
+            Non-empty response text from the LLM.
 
         Raises:
-            Exception: При ошибках обращения к LLM API.
-                Временные ошибки (429, 503, 502, 504, timeout) будут
-                автоматически обработаны retry механизмом брокера.
-                Не нужно реализовывать retry логику в самом клиенте.
+            Exception: On LLM API errors. Transient errors (429, 503, 502, 504, timeout)
+                are retried by the broker; do not add retry inside the client.
         """
         ...
 
@@ -48,29 +44,28 @@ class LLMClientInterface(Protocol):
 @runtime_checkable
 class LLMClientWithCircuitBreakerInterface(Protocol):
     """
-    Интерфейс для LLM клиентов с Circuit Breaker, используемых внутри llm_actor.
+    LLM client contract used inside llm_actor (behind circuit breaker).
 
-    Ошибки валидации (ValueError, ValidationError, JSONDecodeError) обрабатываются
-    на уровне LLMClientWithRetry с автоматическими повторами запросов.
+    Validation errors (ValueError, ValidationError, JSONDecodeError) are handled
+    by LLMClientWithRetry with automatic regeneration attempts.
     """
 
     async def generate(
         self, request: LLMRequest, response_model: type[Any] | None = None
     ) -> Any | str:
         """
-        Генерирует ответ от LLM на основе запроса с поддержкой валидации через Pydantic.
+        Generate a response with optional Pydantic validation.
 
         Args:
-            request: Параметры генерации
-            response_model: Опциональная Pydantic модель для валидации ответа
+            request: Generation parameters.
+            response_model: Optional Pydantic model to validate the response.
 
         Returns:
-            Если response_model указан - валидированный объект модели, иначе строка
+            Validated model instance if response_model is set; otherwise raw string.
 
         Raises:
-            Exception: При ошибках обращения к LLM API или валидации.
-                Ошибки валидации будут автоматически обработаны LLMClientWithRetry
-                с повторными запросами к LLM.
+            Exception: On LLM or validation errors. Validation failures may be retried
+                by LLMClientWithRetry with new LLM calls.
         """
         ...
 

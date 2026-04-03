@@ -50,7 +50,7 @@ async def test_batches_processed_counter_increments(
 
 
 async def test_batches_failed_counter_increments_when_process_batch_raises() -> None:
-    """Инкремент llm_batches_failed_total при исключении из _process_batch."""
+    """llm_batches_failed_total increments when _process_batch raises."""
     settings = LLMActorSettings(
         LLM_MAX_CONSECUTIVE_FAILURES=10,
         LLM_BATCH_SIZE=1,

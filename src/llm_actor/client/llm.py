@@ -18,10 +18,10 @@ T = TypeVar("T", bound=object)
 
 
 def _strip_schema_descriptions(schema: Any) -> Any:
-    """Рекурсивно удаляет все ключи 'description' из JSON Schema.
+    """Recursively strip all ``description`` keys from a JSON Schema tree.
 
-    Применяется ко всему дереву схемы, включая $defs и вложенные объекты.
-    Уменьшает размер промпта и защищает от token overflow на больших схемах.
+    Covers the full schema including ``$defs`` and nested objects to shrink prompts
+    and reduce token overflow risk on large schemas.
     """
     if isinstance(schema, dict):
         return {
@@ -49,13 +49,13 @@ def build_json_prompt(prompt: str, response_model: type[Any]) -> str:
 
 
 def _extract_json_from_response(response: str) -> str:
-    """Извлекает JSON из ответа, удаляя markdown обёртки и лишний текст.
+    """Extract JSON from model output, stripping markdown fences and surrounding text.
 
-    Порядок попыток:
-    1. Строгий code-fence ````json\\n...\\n````
-    2. Гибкий code-fence ```` ```...``` ````
-    3. Поиск первого валидного JSON-объекта или массива через JSONDecoder.raw_decode
-       (корректно обрабатывает вложенные структуры и фигурные скобки в строках)
+    Attempt order:
+    1. Strict `` ```json\\n...\\n``` `` fence
+    2. Flexible `` ```...``` `` fence
+    3. First valid JSON object or array via ``JSONDecoder.raw_decode``
+       (handles nesting and braces inside strings)
     """
     if response is None:
         raise TypeError("Got None response from model")
@@ -155,7 +155,7 @@ class LLMClientWithCircuitBreaker:
         response_str: str,
         error: json.JSONDecodeError | ValidationError | TypeError,
     ) -> bool:
-        """Логирует попытку или финальный сбой. True — вызывающий код должен сделать bare raise."""
+        """Log retry or final failure. True means caller should re-raise."""
         is_last_attempt = validation_attempt >= self._max_validation_attempts
 
         if isinstance(error, json.JSONDecodeError):

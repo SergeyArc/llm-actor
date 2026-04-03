@@ -57,7 +57,7 @@ async def test_openai_adapter_passes_temperature_and_extra_to_sdk() -> None:
 
 @pytest.mark.asyncio
 async def test_openai_adapter_extra_does_not_overwrite_mandatory_fields() -> None:
-    """extra-ключи не должны перезаписывать model и messages."""
+    """request.extra must not overwrite model or messages."""
     adapter = OpenAIAdapter(api_key="sk-test", model="gpt-4o-mini")
     captured: dict[str, object] = {}
 
@@ -98,7 +98,7 @@ async def test_openai_adapter_empty_choices_raises_domain_error() -> None:
 
 @pytest.mark.asyncio
 async def test_openai_adapter_stop_sequences_none_not_sent() -> None:
-    """stop_sequences=None не должен отправляться в SDK."""
+    """stop_sequences=None is omitted from the SDK payload."""
     adapter = OpenAIAdapter(api_key="sk-test", model="gpt-4o-mini")
     captured: dict[str, object] = {}
 
@@ -118,7 +118,7 @@ async def test_openai_adapter_stop_sequences_none_not_sent() -> None:
 
 @pytest.mark.asyncio
 async def test_openai_adapter_stop_sequences_empty_list_sent() -> None:
-    """stop_sequences=[] должен явно передаваться в SDK."""
+    """stop_sequences=[] is passed explicitly to the SDK."""
     adapter = OpenAIAdapter(api_key="sk-test", model="gpt-4o-mini")
     captured: dict[str, object] = {}
 
@@ -150,7 +150,7 @@ async def test_from_openai_factory_builds_service() -> None:
 
 @pytest.mark.asyncio
 async def test_openai_compatible_adapter_passes_base_url() -> None:
-    """OpenAICompatibleAdapter должен передавать base_url в AsyncOpenAI."""
+    """OpenAICompatibleAdapter forwards base_url to AsyncOpenAI."""
     with patch("llm_actor.client.adapters.openai.AsyncOpenAI") as mock_openai_cls:
         mock_openai_cls.return_value = MagicMock()
         OpenAICompatibleAdapter(api_key="k", model="m", base_url="http://localhost:11434/v1")

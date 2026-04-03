@@ -2,7 +2,7 @@ from pydantic import BaseModel
 
 
 class User(BaseModel):
-    """Тестовая Pydantic модель для проверки response_model."""
+    """Sample Pydantic model for structured-output tests."""
 
     name: str
     age: int

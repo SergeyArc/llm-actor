@@ -127,7 +127,7 @@ class SupervisedActorPool:
                     f"Supervisor loop failed unexpectedly! Pool is now unmonitored. Error: {e}",
                     exc_info=True,
                 )
-                # P-5: CancelledError во время recovery-sleep тоже должен завершить supervisor.
+                # P-5: CancelledError during recovery sleep must still end the supervisor.
                 try:
                     await asyncio.sleep(5.0)
                 except asyncio.CancelledError:
@@ -192,8 +192,8 @@ class SupervisedActorPool:
     def _should_restart(self, actor_index: int) -> bool:
         """Check if actor should be restarted based on restart policy.
 
-        Счётчик restart увеличивается только после успешного рестарта в _restart_actor,
-        а не здесь — чтобы неудачные попытки не расходовали бюджет.
+        The restart counter increments only after a successful restart in _restart_actor,
+        not here, so failed attempts do not consume the budget.
         """
         now = time.time()
         restarts = self._restart_counts[actor_index]
@@ -235,7 +235,7 @@ class SupervisedActorPool:
         self._actors[actor_index] = new_actor
         self._actor_tasks[actor_index] = new_actor.task
 
-        # P-12: счётчик рестартов увеличиваем только после успеха.
+        # P-12: bump restart count only after a successful restart.
         self._restart_counts[actor_index].append(time.time())
 
         if self._metrics:
@@ -249,9 +249,8 @@ class SupervisedActorPool:
     async def _requeue_pending_messages(self, pending_messages: list[ActorMessage[Any]]) -> None:
         tracer = otel_tracing.get_tracer()
         for message in pending_messages:
-            # Сбрасываем otel_context: корневой generate-спан уже завершён, новый
-            # wait-спан должен использовать текущий (супервизорский) контекст, а не
-            # ссылаться на закрытый родительский спан.
+            # Clear otel_context: root generate span is closed; the new wait span must
+            # attach to the current (supervisor) context, not a finished parent span.
             message.otel_context = None
             message.queue_wait_span_closer = None
             parent_ctx = get_current()
@@ -369,12 +368,12 @@ class SupervisedActorPool:
             f"Received generate request (response_model={'provided' if response_model else 'None'})"
         )
 
-        # P-2: если send() бросит исключение (все retry исчерпаны), future останется
-        # неразрешённым — завершаем его с тем же исключением, чтобы await future не завис.
+        # P-2: if send() raises (retries exhausted), the future would stay pending —
+        # complete it with the same exception so await future does not hang.
         try:
             await self.send(msg)
         except Exception as exc:
-            # Закрываем wait_span, так как сообщение никогда не попадёт к актору.
+            # End wait_span: the message never reaches an actor.
             wait_span.end()
             msg.queue_wait_span_closer = None
             if not future.done():

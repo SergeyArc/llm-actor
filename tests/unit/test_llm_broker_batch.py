@@ -6,7 +6,7 @@ from tests.models import User
 
 
 async def test_ask_batch_mixed_requests(service, mock_llm_response):
-    """Тест пакетной обработки смешанных запросов с/без response_model."""
+    """generate_batch with mixed str and structured requests."""
     requests = [
         ("What is the weather?", None),
         ("Who is Alice?", User),
@@ -39,7 +39,7 @@ async def test_ask_batch_mixed_requests(service, mock_llm_response):
 
 
 async def test_ask_batch_handles_errors(service, mock_llm_response):
-    """Тест обработки ошибок в пакетных запросах."""
+    """Per-item failures in generate_batch surface as exceptions in the list."""
     requests = [
         ("success", None),
         ("error", None),
@@ -61,7 +61,7 @@ async def test_ask_batch_handles_errors(service, mock_llm_response):
 
 
 async def test_ask_batch_empty_list(service):
-    """Тест пакетной обработки пустого списка запросов."""
+    """generate_batch([]) returns []."""
     requests = []
 
     results = await service.generate_batch(requests)
@@ -71,7 +71,7 @@ async def test_ask_batch_empty_list(service):
 
 
 async def test_ask_batch_single_request(service, mock_llm_response):
-    """Тест пакетной обработки одного запроса."""
+    """Single-item generate_batch."""
     prompt = "single_request"
     mock_llm_response[prompt] = "Single response"
     requests = [(prompt, None)]
@@ -84,7 +84,7 @@ async def test_ask_batch_single_request(service, mock_llm_response):
 
 
 async def test_ask_batch_with_pydantic_validation_error(service, mock_llm_response):
-    """Тест ошибки валидации Pydantic при невалидном JSON в response_model."""
+    """Invalid JSON for response_model yields ValidationError in batch results."""
     requests = [
         ("valid", User),
         ("invalid_json", User),

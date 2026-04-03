@@ -16,23 +16,23 @@ from llm_actor.exceptions import (
 
 def _map_openai_exception(exc: Exception) -> Exception:
     if isinstance(exc, RateLimitError):
-        return LLMServiceOverloadedError(str(exc) or "LLM сервис перегружен")
+        return LLMServiceOverloadedError(str(exc) or "LLM service overloaded")
     if isinstance(exc, APITimeoutError):
         return LLMServiceTimeoutError(str(exc) or "LLM request timed out")
     if isinstance(exc, APIConnectionError):
-        return LLMServiceUnavailableError(str(exc) or "Ошибка соединения с LLM")
+        return LLMServiceUnavailableError(str(exc) or "LLM connection error")
     if isinstance(exc, APIStatusError):
         code = exc.status_code
         if code == 503:
-            return LLMServiceUnavailableError(str(exc) or "LLM сервис недоступен")
+            return LLMServiceUnavailableError(str(exc) or "LLM service unavailable")
         if code in (502, 504):
             return LLMServiceHTTPError(str(exc) or "LLM HTTP error", status_code=code)
-        return LLMServiceGeneralError(str(exc) or "Ошибка LLM сервиса")
+        return LLMServiceGeneralError(str(exc) or "LLM service error")
     return exc
 
 
 class OpenAIAdapter:
-    """Адаптер Async OpenAI SDK с маппингом ошибок и поддержкой tool calling."""
+    """Async OpenAI SDK adapter with error mapping and tool calling."""
 
     def __init__(
         self,
@@ -79,14 +79,14 @@ class OpenAIAdapter:
             raise _map_openai_exception(exc) from exc
 
         if not completion.choices:
-            raise LLMServiceGeneralError("Пустой ответ от OpenAI: нет choices")
+            raise LLMServiceGeneralError("Empty OpenAI response: no choices")
 
         choice = completion.choices[0]
         content = choice.message.content
 
         if content is None:
             reason = getattr(choice, "finish_reason", "unknown")
-            raise LLMServiceGeneralError(f"Пустой ответ от LLM (finish_reason: {reason})")
+            raise LLMServiceGeneralError(f"Empty LLM response (finish_reason: {reason})")
 
         return cast(str, content)
 
@@ -104,7 +104,7 @@ class OpenAIAdapter:
         payload["messages"] = messages
         payload["tools"] = tools_schema
         
-        # Только если пользователь не переопределил это в extra
+        # Unless overridden in request.extra
         if "tool_choice" not in payload:
             payload["tool_choice"] = "auto"
         if request.temperature is not None:
@@ -118,7 +118,7 @@ class OpenAIAdapter:
             raise _map_openai_exception(exc) from exc
 
         if not completion.choices:
-            raise LLMServiceGeneralError("Пустой ответ от OpenAI: нет choices")
+            raise LLMServiceGeneralError("Empty OpenAI response: no choices")
 
         message = completion.choices[0].message
 
@@ -155,7 +155,7 @@ class OpenAIAdapter:
 
         content = message.content
         if content is None:
-            raise LLMServiceGeneralError("Пустой ответ от OpenAI при tool calling")
+            raise LLMServiceGeneralError("Empty OpenAI response during tool calling")
         return LLMResponse(
             content=content,
             assistant_message={"role": "assistant", "content": content},

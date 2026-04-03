@@ -37,33 +37,32 @@ def _actor_log_record_patcher(record: Record) -> None:
 
 
 class ActorLogger:
-    """Централизованный логгер для пакета llm_actor на основе loguru."""
+    """Central loguru-based logger for llm_actor."""
 
     _configured = False
 
     @classmethod
     def configure(cls) -> None:
         """
-        Бережная конфигурация логгера: добавляет только патчер для контекстных тегов.
-        Не удаляет существующие sink'и и не добавляет новые.
+        Non-invasive setup: only registers the context tag patcher.
+        Does not remove existing sinks or add new ones.
         """
         if cls._configured:
             return
 
-        # Добавляем патчер, который заполняет теги (actor_tag, trace_tag и т.д.)
-        # Это безопасно для существующих проектов: если в формате вывода этих полей нет,
-        # они просто сохраняются в extra-словаре записи.
+        # Patch records with actor_tag, trace_tag, etc.
+        # Safe for host apps: if the format string omits these fields, they remain in ``extra``.
         logger.configure(patcher=_actor_log_record_patcher)
         cls._configured = True
 
     @classmethod
     def setup_standard_logging(cls, level: str = "INFO") -> None:
         """
-        Явная настройка «красивого» вывода в консоль.
-        ОСТОРОЖНО: Удаляет все текущие обработчики (sinks) loguru!
+        Opinionated console logging for applications.
 
-        Используйте этот метод только в точке входа вашего приложения,
-        если хотите стиль вывода как в llm-actor.
+        WARNING: removes all existing loguru sinks.
+
+        Call only from your app entrypoint if you want llm_actor-style console output.
         """
         logger.remove()
         cls.configure()
@@ -88,13 +87,13 @@ class ActorLogger:
     @classmethod
     def get_logger(cls, name: str | None = None) -> Any:
         """
-        Возвращает настроенный логгер.
+        Return a configured logger.
 
         Args:
-            name: Имя модуля для логирования (опционально)
+            name: Optional module name binding.
 
         Returns:
-            Экземпляр loguru logger
+            A loguru logger instance.
         """
         if not cls._configured:
             cls.configure()
@@ -111,15 +110,15 @@ class ActorLogger:
         request_id: str | None = None,
     ) -> Any:
         """
-        Создает логгер с привязанным контекстом.
+        Logger with bound pool/actor/request context.
 
         Args:
-            pool_id: ID пула акторов
-            actor_id: ID актора
-            request_id: ID запроса
+            pool_id: Actor pool identifier.
+            actor_id: Actor identifier.
+            request_id: Request identifier.
 
         Returns:
-            Логгер с привязанным контекстом
+            Bound loguru logger.
         """
         if not cls._configured:
             cls.configure()

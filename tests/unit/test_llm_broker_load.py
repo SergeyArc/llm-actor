@@ -3,7 +3,7 @@ import time
 
 
 async def test_high_load_parallel_requests(service, mock_llm_response):
-    """Тест обработки большого количества параллельных запросов."""
+    """Many parallel generate() calls complete successfully."""
     num_requests = 200
     prompts = [f"request_{i}" for i in range(num_requests)]
     for prompt in prompts:
@@ -28,7 +28,7 @@ async def test_high_load_parallel_requests(service, mock_llm_response):
 
 
 async def test_high_load_batch_requests(service, mock_llm_response):
-    """Тест пакетной обработки большого количества запросов."""
+    """Large generate_batch run completes successfully."""
     num_requests = 150
     requests = [(f"request_{i}", None) for i in range(num_requests)]
     for prompt, _ in requests:
@@ -52,7 +52,7 @@ async def test_high_load_batch_requests(service, mock_llm_response):
 
 
 async def test_high_load_mixed_with_errors(service, mock_llm_response):
-    """Тест обработки большой нагрузки с частичными ошибками."""
+    """High load with some failing prompts returns mixed results."""
     num_requests = 100
     prompts = [f"request_{i}" for i in range(num_requests)]
     error_indices = [10, 25, 50, 75]

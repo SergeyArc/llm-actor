@@ -12,7 +12,7 @@ from tests.dummy_llm_client import DummyLLMClient
 
 @pytest.fixture(autouse=True)
 def clear_prometheus_registry():
-    """Очистка реестра Prometheus перед каждым тестом (только при установленном prometheus-client)."""
+    """Clear Prometheus registry between tests when prometheus-client is installed."""
     if not is_prometheus_metrics_available():
         yield
         return
@@ -29,13 +29,13 @@ def clear_prometheus_registry():
 
 @pytest.fixture
 def mock_llm_responses():
-    """Фикстура для хранения мок-ответов LLM."""
+    """Mutable map of prompt -> mock LLM response or exception."""
     return {}
 
 
 @pytest.fixture
 def mock_llm_response(mock_llm_responses):
-    """Фикстура для мокирования DummyLLMClient.generate_async с сохранением реалистичных задержек."""
+    """Patches DummyLLMClient.generate_async using mock_llm_responses and latency model."""
 
     async def mock_generate_async(self, request: LLMRequest) -> str:
         prompt = request.prompt
@@ -67,7 +67,7 @@ def mock_llm_response(mock_llm_responses):
 
 @pytest_asyncio.fixture
 async def service(mock_llm_response):
-    """Фикстура для инициализированного и запущенного LLMActorService."""
+    """Started LLMActorService with DummyLLMClient."""
     from llm_actor import LLMActorSettings
 
     settings = LLMActorSettings()

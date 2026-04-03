@@ -1,102 +1,105 @@
 # LLM Actor
 
-Изолированный Python-пакет для эффективного управления запросами к Large Language Models (LLM). Обеспечивает высокую производительность через пул акторов, надежность через Circuit Breaker и повторные попытки (Retry), а также встроенный цикл вызова инструментов (Tool Calling).
+*Russian documentation: [docs/README.ru.md](docs/README.ru.md)*
 
-## Основные возможности
+A standalone Python package for efficient Large Language Model (LLM) request handling. It delivers high throughput via an actor pool, resilience via a circuit breaker and retries, and a built-in tool-calling loop.
 
-- **Multi-Provider Support**: Нативная интеграция с OpenAI, Anthropic и Sber GigaChat *(экспериментально, см. ниже)*.
-- **Self-Hosted LLM Ready**: Полная поддержка vLLM, Ollama и других OpenAI/Anthropic-совместимых прокси. Работает с open-weight моделями (Llama, Qwen, GigaChat-Max).
-- **Parallel Tool Execution**: Выполнение запросов к нескольким инструментам одновременно, что радикально снижает общую задержку (latency) при сложных сценариях.
-- **Actor-inspired Design**: Внутренняя архитектура на базе единой **Priority Queue** и пула воркеров (акторов) с супервизором для автоматического восстановления.
-- **Priority Management**: Поддержка уровней приоритета для задач (UI-запросы могут мгновенно обгонять фоновую аналитику).
-- **Resilience (Отказоустойчивость)**:
-    - **Circuit Breaker**: Защита от каскадных сбоев провайдера. Быстрый отказ (fail-fast) при перегрузке.
-    - **Transport Retry**: Автоматические повторы при сетевых ошибках (502, 503, 504, 429) с экспоненциальной задержкой.
-    - **Semantic Retry**: Повторная генерация, если ответ LLM не прошел Pydantic-валидацию.
-- **Observability**: Глубокая трассировка через OpenTelemetry и структурированное логирование с контекстом (actor_id, trace_id).
-- **Structured Output**: Интеграция с Pydantic V2 для гарантированного получения строго типизированных данных.
+## Features
 
-## Требования
+- **Multi-Provider Support**: Native integration with OpenAI, Anthropic, and Sber GigaChat *(experimental; see below)*.
+- **Self-Hosted LLM Ready**: Full support for vLLM, Ollama, and other OpenAI/Anthropic-compatible proxies. Works with open-weight models (Llama, Qwen, GigaChat-Max).
+- **Parallel Tool Execution**: Multiple tools can run concurrently, cutting end-to-end latency in complex flows.
+- **Actor-Inspired Design**: A single **priority queue** plus a pool of worker actors supervised for automatic recovery.
+- **Priority Management**: Task priority levels so UI traffic can preempt background work.
+- **Resilience**:
+    - **Circuit Breaker**: Limits cascading provider failures with fail-fast under overload.
+    - **Transport Retry**: Automatic retries on transient HTTP errors (502, 503, 504, 429) with exponential backoff.
+    - **Semantic Retry**: Regenerates when the LLM response fails Pydantic validation.
+- **Observability**: OpenTelemetry tracing and structured logging with context (`actor_id`, `trace_id`).
+- **Structured Output**: Pydantic V2 integration for strictly typed responses.
+
+## Requirements
 
 - **Python**: 3.13
-- **Ключевые зависимости**: Pydantic V2, loguru, OpenTelemetry API.
+- **Core dependencies**: Pydantic V2, loguru, OpenTelemetry API.
 
-## Установка
+## Installation
 
 ```bash
-# Базовая установка (только ядро)
+# Core only
 pip install llm-actor
 
-# С поддержкой провайдеров
+# With provider SDKs
 pip install "llm-actor[openai]"    # OpenAI SDK
 pip install "llm-actor[anthropic]" # Anthropic SDK
 pip install "llm-actor[gigachat]"  # Sber GigaChat SDK
 
-# Все провайдеры + метрики Prometheus
+# All providers + Prometheus metrics
 pip install "llm-actor[openai,anthropic,gigachat,metrics]"
 ```
 
-## Быстрый старт
+## Quick start
 
-### 1. Создание сервиса
+### 1. Create a service
 
-Используйте удобные фабрики для популярных провайдеров:
+Use the built-in factories for common providers:
 
 ```python
 from llm_actor import LLMActorService, LLMActorSettings
 
-# Конфигурация брокера
 settings = LLMActorSettings(
-    LLM_NUM_ACTORS=10,               # Размер пула воркеров
-    LLM_RETRY_MAX_ATTEMPTS=3,        # Повторы при сетевых ошибках
+    LLM_NUM_ACTORS=10,
+    LLM_RETRY_MAX_ATTEMPTS=3,
 )
 
-# OpenAI / OpenAI Compatible (vLLM, Ollama)
+# OpenAI / OpenAI-compatible (vLLM, Ollama)
 service = LLMActorService.from_openai(api_key="...", model="gpt-4o", settings=settings)
 
-# GigaChat (экспериментально)
+# GigaChat (experimental)
 service = LLMActorService.from_gigachat(credentials="...", model="GigaChat-Max-V2")
 ```
 
-## Разработка и Тестирование
+## Development and testing
 
-Библиотека разделяет быстрые Unit-тесты и тяжелые интеграционные проверки.
+The library splits fast unit tests from heavier integration runs.
 
-### Настройка окружения
-Скопируйте пример настроек и укажите свои ключи:
+### Environment
+
+Copy the example env and add your keys:
+
 ```bash
 cp .env.example .env
 ```
 
-### Запуск тестов
+### Running tests
+
 ```bash
 uv sync --all-extras --group dev
 
-# 1. Unit-тесты (на моках, быстро, запуск при каждой правке)
+# 1. Unit tests (mocked, fast)
 pytest tests/unit
 
-# 2. Интеграционные тесты (на реальных моделях)
-# Требует активных API-ключей в .env
+# 2. Integration tests (real models; requires API keys in .env)
 pytest tests/integration --integration
 ```
 
-Интеграционные тесты автоматически пропускаются, если не передан флаг `--integration` или если отсутствуют необходимые API-ключи.
+Integration tests are skipped if `--integration` is not passed or if required API keys are missing.
 
-## Статус поддержки провайдеров
+## Provider support
 
-| Провайдер | Базовая генерация | Tool Calling | Протестировано |
+| Provider | Basic generation | Tool calling | Tested |
 |---|---|---|---|
-| OpenAI / Compatible | ✅ | ✅ | ✅ Проверено на реальных моделях |
-| Anthropic | ✅ | ✅ | ✅ Проверено на реальных моделях |
-| Sber GigaChat | ✅ | ⚠️ | ❌ Не тестировалось против официального провайдера |
+| OpenAI / compatible | ✅ | ✅ | ✅ Against real models |
+| Anthropic | ✅ | ✅ | ✅ Against real models |
+| Sber GigaChat | ✅ | ⚠️ | ❌ Not verified against the official provider |
 
 > [!WARNING]
-> **GigaChat — экспериментальная поддержка.** Адаптер реализован по документации GigaChat SDK, но не прошёл полного тестирования против официального API Сбера (`gigachat.devices.sberdevices.ru`).
+> **GigaChat support is experimental.** The adapter follows the GigaChat SDK docs but has not been fully validated against Sber’s official API (`gigachat.devices.sberdevices.ru`).
 >
-> **Известные ограничения при использовании через vLLM-прокси:** Tool Calling не работает без флагов `--enable-auto-tool-choice` и `--tool-call-parser` на стороне сервера. Это ограничение инфраструктуры, а не библиотеки.
+> **vLLM proxy caveat:** Tool calling requires server flags `--enable-auto-tool-choice` and `--tool-call-parser`. That is an infrastructure constraint, not a library bug.
 
-## Философия дизайна
+## Design principles
 
-- **Shared Priority Queue**: Единая очередь обеспечивающая приоритезацию.
-- **Изоляция сбоев**: Падение воркера не вешает всю систему.
-- **Backpressure**: Защита провайдера от перегрузки.
+- **Shared priority queue**: One queue for global prioritization.
+- **Failure isolation**: A crashed worker does not take down the pool.
+- **Backpressure**: Protects the provider from overload.

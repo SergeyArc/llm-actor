@@ -1,9 +1,11 @@
 import os
+
 import pytest
+
 from llm_actor import LLMActorService, LLMRequest
 
-# Интеграционный тест для GigaChat через реальное API
-# Запускается только с флагом --integration
+# Integration tests against real GigaChat API.
+# Run with pytest --integration.
 
 @pytest.fixture
 def gigachat_credentials():
@@ -31,6 +33,6 @@ async def test_real_gigachat_tool_calling(gigachat_credentials):
     try:
         prompt = "Который сейчас час? Используй инструмент."
         res = await service.generate(LLMRequest(prompt=prompt, tools=[get_current_time]))
-        assert "12:34:56" in res or "12" in res # Минимум проверки на вызов инструмента
+        assert "12:34:56" in res or "12" in res  # minimal signal that the tool ran
     finally:
         await service.stop()

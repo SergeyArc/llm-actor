@@ -33,7 +33,7 @@ class _CapturingSpanExporter(SpanExporter):
 
 
 def _force_set_tracer_provider(provider: TracerProvider) -> None:
-    """Принудительно устанавливает TracerProvider, обходя ограничение «set-once»."""
+    """Force-set TracerProvider, bypassing the API's set-once guard."""
     _trace_module._TRACER_PROVIDER_SET_ONCE._done = False  # type: ignore[attr-defined]
     _trace_module._TRACER_PROVIDER = None  # type: ignore[attr-defined]
     _trace_module._set_tracer_provider(provider, log=False)  # type: ignore[attr-defined]
@@ -41,7 +41,7 @@ def _force_set_tracer_provider(provider: TracerProvider) -> None:
 
 @pytest.fixture
 def otel_memory_exporter() -> Generator[_CapturingSpanExporter]:
-    """Изолированная фикстура: создаёт свежий TracerProvider и W3C-пропагатор на каждый тест."""
+    """Per-test fresh TracerProvider and W3C trace context propagator."""
     exporter = _CapturingSpanExporter()
     provider = TracerProvider()
     provider.add_span_processor(SimpleSpanProcessor(exporter))
@@ -163,11 +163,10 @@ async def test_queue_wait_span_captures_actual_queue_time(
     mock_llm_response: dict[str, str],
     otel_memory_exporter: _CapturingSpanExporter,
 ) -> None:
-    """Спек TESTING: имитирует задержку в очереди через параллельные запросы к одному актору.
+    """Queue delay via two concurrent requests to a single-actor pool (batch_size=1).
 
-    Два запроса отправляются одновременно на пул с одним актором и batch_size=1.
-    Второй запрос вынужден ждать в очереди пока первый обрабатывается.
-    Проверяем, что оба wait-спана завершены и имеют корректную длительность.
+    The second request waits while the first runs; both llm_pool.wait spans must end
+    with valid durations.
     """
     settings = LLMActorSettings(LLM_NUM_ACTORS=1, LLM_BATCH_SIZE=1, LLM_BATCH_TIMEOUT=0.05)
     base_client = DummyLLMClient(settings=settings)
@@ -191,8 +190,8 @@ async def test_queue_wait_span_captures_actual_queue_time(
 async def test_library_works_without_configured_tracer_provider(
     mock_llm_response: dict[str, str],
 ) -> None:
-    """AC5: Библиотека работает без ошибок, если opentelemetry-sdk не установлен / провайдер не настроен."""
-    # Сбрасываем провайдер до no-op прокси — эквивалент среды без opentelemetry-sdk.
+    """AC5: library runs without error when no SDK / no configured provider."""
+    # Reset to no-op proxy — equivalent to an environment without opentelemetry-sdk.
     original_provider = _trace_module._TRACER_PROVIDER  # type: ignore[attr-defined]
     original_done = _trace_module._TRACER_PROVIDER_SET_ONCE._done  # type: ignore[attr-defined]
     _trace_module._TRACER_PROVIDER_SET_ONCE._done = False  # type: ignore[attr-defined]

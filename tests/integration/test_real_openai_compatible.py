@@ -1,9 +1,11 @@
 import os
+
 import pytest
+
 from llm_actor import LLMActorService, LLMRequest
 
-# Интеграционный тест для OpenAI Compatible API (vLLM, Ollama)
-# Запускается только с флагом --integration
+# Integration tests for OpenAI-compatible APIs (vLLM, Ollama).
+# Run with pytest --integration.
 
 @pytest.fixture
 def openai_api_key():

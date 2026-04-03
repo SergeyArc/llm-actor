@@ -8,11 +8,11 @@ if TYPE_CHECKING:
 
 
 class LLMActorError(Exception):
-    """Базовое исключение для всех ошибок пакета llm_actor."""
+    """Base exception for all llm_actor errors."""
 
 
 class LLMServiceError(LLMActorError):
-    """Базовое исключение для ошибок LLM сервиса."""
+    """Base exception for LLM service errors."""
 
     def __init__(self, message: str, status_code: int = HTTPStatus.INTERNAL_SERVER_ERROR):
         self.message = message
@@ -21,9 +21,9 @@ class LLMServiceError(LLMActorError):
 
 
 class LLMServiceUnavailableError(LLMServiceError):
-    """Исключение, возникающее когда LLM сервис недоступен."""
+    """Raised when the LLM service is unavailable."""
 
-    def __init__(self, message: str = "LLM сервис недоступен"):
+    def __init__(self, message: str = "LLM service unavailable"):
         super().__init__(
             message=message,
             status_code=HTTPStatus.SERVICE_UNAVAILABLE,
@@ -31,9 +31,9 @@ class LLMServiceUnavailableError(LLMServiceError):
 
 
 class LLMServiceOverloadedError(LLMServiceError):
-    """Исключение, возникающее когда LLM сервис перегружен."""
+    """Raised when the LLM service is overloaded."""
 
-    def __init__(self, message: str = "LLM сервис перегружен"):
+    def __init__(self, message: str = "LLM service overloaded"):
         super().__init__(
             message=message,
             status_code=HTTPStatus.TOO_MANY_REQUESTS,
@@ -41,7 +41,7 @@ class LLMServiceOverloadedError(LLMServiceError):
 
 
 class LLMServiceHTTPError(LLMServiceError):
-    """Исключение, возникающее при HTTP ошибках LLM сервиса."""
+    """Raised on HTTP errors from the LLM service."""
 
     def __init__(self, message: str, status_code: int):
         super().__init__(
@@ -51,9 +51,9 @@ class LLMServiceHTTPError(LLMServiceError):
 
 
 class LLMServiceGeneralError(LLMServiceError):
-    """Исключение, возникающее при общих ошибках LLM сервиса."""
+    """Raised for general LLM service failures."""
 
-    def __init__(self, message: str = "Ошибка LLM сервиса"):
+    def __init__(self, message: str = "LLM service error"):
         super().__init__(
             message=message,
             status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
@@ -61,7 +61,7 @@ class LLMServiceGeneralError(LLMServiceError):
 
 
 class LLMServiceTimeoutError(LLMServiceError):
-    """Исключение при таймауте запроса к LLM."""
+    """Raised when an LLM request times out."""
 
     def __init__(self, message: str = "LLM request timed out"):
         super().__init__(

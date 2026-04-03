@@ -24,11 +24,11 @@ def _map_gigachat_exception(exc: Exception) -> Exception:
         )
 
         if isinstance(exc, RateLimitError):
-            return LLMServiceOverloadedError(str(exc) or "GigaChat: слишком много запросов")
+            return LLMServiceOverloadedError(str(exc) or "GigaChat: too many requests")
         if isinstance(exc, AuthenticationError):
-            return LLMServiceGeneralError(str(exc) or "GigaChat: ошибка авторизации")
+            return LLMServiceGeneralError(str(exc) or "GigaChat: authentication failed")
         if isinstance(exc, GigaChatException):
-            return LLMServiceUnavailableError(str(exc) or "GigaChat: ошибка сервиса")
+            return LLMServiceUnavailableError(str(exc) or "GigaChat: service error")
     except ImportError:
         pass
     return exc
@@ -36,8 +36,7 @@ def _map_gigachat_exception(exc: Exception) -> Exception:
 
 class GigaChatAdapter(ToolCapableClientInterface):
     """
-    Адаптер для GigaChat SDK от Сбера.
-    Реализует LLMClientInterface и ToolCapableClientInterface.
+    GigaChat SDK adapter implementing LLMClientInterface and ToolCapableClientInterface.
     """
 
     def __init__(
@@ -53,7 +52,7 @@ class GigaChatAdapter(ToolCapableClientInterface):
             from gigachat import GigaChat
         except ImportError as err:
             raise ImportError(
-                "Пакет 'gigachat' не установлен. Пожалуйста, выполните 'pip install gigachat'."
+                "Package 'gigachat' is not installed. Run 'pip install gigachat'."
             ) from err
 
         self._model = model
@@ -73,7 +72,7 @@ class GigaChatAdapter(ToolCapableClientInterface):
         if request.system_prompt:
             msgs.append(Messages(role=MessagesRole.SYSTEM, content=request.system_prompt))
 
-        # Если есть история (из Tool Loop), используем ее
+        # Tool-loop history takes precedence when present
         if conversation:
             for m in conversation:
                 msgs.append(Messages(
@@ -104,7 +103,7 @@ class GigaChatAdapter(ToolCapableClientInterface):
                 max_tokens=request.max_tokens,
             )
             response = await self._client.achat(chat_obj)
-            return cast(str, response.choices[0].message.content)
+            return response.choices[0].message.content
         except LLMServiceError:
             raise
         except Exception as exc:
@@ -121,7 +120,7 @@ class GigaChatAdapter(ToolCapableClientInterface):
             functions = []
             if request.tools:
                 for tool in cast(list[Tool], request.tools):
-                    # GigaChat ожидает схему параметров напрямую в словаре
+                    # GigaChat expects parameter schema as a plain dict
                     schema = tool.build_openai_schema()["function"]
                     functions.append(
                         Function(
@@ -147,17 +146,23 @@ class GigaChatAdapter(ToolCapableClientInterface):
 
             if msg.function_call:
                 import json
+
                 fc = msg.function_call
-                args = json.loads(fc.arguments) if isinstance(fc.arguments, str) else fc.arguments
+                raw_args = (
+                    json.loads(fc.arguments) if isinstance(fc.arguments, str) else fc.arguments
+                )
+                tool_args: dict[str, Any] = (
+                    raw_args if isinstance(raw_args, dict) else {}
+                )
                 tool_calls.append(
                     ToolCall(
                         id=f"call_{fc.name}",
                         name=fc.name,
-                        arguments=args,
+                        arguments=tool_args,
                     )
                 )
 
-            # Формируем assistant_message для истории
+            # Build assistant_message for conversation history
             assistant_msg: dict[str, Any] = {"role": "assistant", "content": msg.content}
             if msg.function_call:
                 assistant_msg["function_call"] = {
@@ -176,7 +181,7 @@ class GigaChatAdapter(ToolCapableClientInterface):
             raise _map_gigachat_exception(exc) from exc
 
     def format_tool_results(self, results: list[ToolResult]) -> list[dict[str, Any]]:
-        # GigaChat использует role="function" для результатов
+        # GigaChat uses role="function" for tool results
         return [{"role": "function", "name": r.name, "content": r.result} for r in results]
 
     async def close(self) -> None:

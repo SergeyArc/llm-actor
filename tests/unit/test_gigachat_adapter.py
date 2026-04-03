@@ -1,28 +1,20 @@
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
 from llm_actor.client.adapters.gigachat import GigaChatAdapter
 from llm_actor.core.request import LLMRequest
-from llm_actor.exceptions import LLMServiceOverloadedError, LLMServiceGeneralError
+from llm_actor.exceptions import LLMServiceOverloadedError
 
-# Пропускаем тесты, если gigachat не установлен (хотя в dev группе он должен быть)
+# Skip if gigachat extra is not installed
 pytest.importorskip("gigachat")
 
 @pytest.mark.asyncio
 async def test_gigachat_adapter_build_payload_basic():
-    # Нам нужно мокать саму библиотеку gigachat внутри __init__
+    # Mock gigachat.GigaChat inside adapter __init__
     with patch("gigachat.GigaChat"):
         adapter = GigaChatAdapter(credentials="test_creds", model="GigaChat-Pro")
-        
-        req = LLMRequest(
-            prompt="Hello",
-            system_prompt="Be kind",
-            temperature=0.5,
-            max_tokens=100
-        )
-        
-        # Проверяем внутренний метод _build_payload (хотя generate_async важнее)
-        # В GigaChat vLLM/SDK обычно используется объект Chat
-        pass
+        assert adapter._model == "GigaChat-Pro"
 
 @pytest.mark.asyncio
 async def test_gigachat_adapter_generate_async_success():
@@ -30,7 +22,7 @@ async def test_gigachat_adapter_generate_async_success():
         mock_client = mock_class.return_value
         mock_client.achat = AsyncMock()
         
-        # Настраиваем фейковый ответ GigaChat
+        # Fake GigaChat API response
         mock_response = MagicMock()
         mock_choice = MagicMock()
         mock_choice.message.content = "GigaResponse"

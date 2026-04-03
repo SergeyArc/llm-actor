@@ -124,10 +124,10 @@ class ToolCallOrchestratorClient:
                 return ToolResult(tool_call_id=call.id, name=call.name, result=str(raw_result))
 
             except TimeoutError as exc:
-                # Исключение пробрасывается — SDK автоматически вызовет record_exception и set_status.
+                # Propagates: the SDK records exception and span status.
                 raise ToolExecutionTimeoutError(call.name, effective_timeout) from exc
             except Exception as exc:
-                # Исключение «глотается» (возвращаем ToolResult), поэтому записываем явно.
+                # Swallowed into ToolResult — record on the span explicitly.
                 span.record_exception(exc)
                 span.set_status(StatusCode.ERROR, str(exc))
                 self._logger.warning(f"Tool '{call.name}' raised exception: {exc}")

@@ -11,7 +11,7 @@ from llm_actor.logger import ActorLogger
 from llm_actor.metrics import MetricsCollector
 from llm_actor.settings import LLMActorSettings
 
-# Таймаут периодического пробуждения в idle-режиме для проверки _running.
+# Idle poll interval to re-check _running.
 _IDLE_POLL_TIMEOUT = 1.0
 
 _QueuePollOutcome = Literal["timeout", "stop", "message"]
@@ -59,7 +59,7 @@ class ModelActor:
 
     @property
     def is_alive(self) -> bool:
-        """True если актор запущен и его задача активна."""
+        """True when the actor is running and its task is still active."""
         return self._running and self._task is not None and not self._task.done()
 
     @property

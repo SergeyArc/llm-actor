@@ -1,4 +1,4 @@
-"""Встроенные адаптеры провайдеров LLM. Каждый адаптер зависит от опциональной зависимости."""
+"""Built-in LLM provider adapters; each depends on optional extras."""
 
 __all__: list[str] = []
 

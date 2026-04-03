@@ -1,5 +1,5 @@
+
 import pytest
-import os
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -11,10 +11,10 @@ def pytest_addoption(parser):
 
 def pytest_collection_modifyitems(config, items):
     if config.getoption("--integration"):
-        # Если флаг передан, ничего не делаем, запускаем все
+        # Flag set: run integration tests
         return
-    
-    # Если флаг НЕ передан, помечаем все тесты в папке integration как пропущенные
+
+    # No flag: skip tests under integration/
     skip_int = pytest.mark.skip(reason="need --integration option to run")
     for item in items:
         if "integration" in str(item.fspath):

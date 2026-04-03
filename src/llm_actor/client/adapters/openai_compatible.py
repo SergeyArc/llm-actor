@@ -4,7 +4,7 @@ from llm_actor.client.adapters.openai import OpenAIAdapter
 
 
 class OpenAICompatibleAdapter(OpenAIAdapter):
-    """OpenAI-совместимый эндпоинт (vLLM, LM Studio, LocalAI и т.д.) через тот же AsyncOpenAI SDK."""
+    """OpenAI-compatible endpoint (vLLM, LM Studio, LocalAI, etc.) via AsyncOpenAI."""
 
     def __init__(
         self,

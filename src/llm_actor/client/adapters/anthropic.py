@@ -21,23 +21,23 @@ from llm_actor.exceptions import (
 
 def _map_anthropic_exception(exc: Exception) -> Exception:
     if isinstance(exc, RateLimitError):
-        return LLMServiceOverloadedError(str(exc) or "LLM сервис перегружен")
+        return LLMServiceOverloadedError(str(exc) or "LLM service overloaded")
     if isinstance(exc, APITimeoutError):
         return LLMServiceTimeoutError(str(exc) or "LLM request timed out")
     if isinstance(exc, APIConnectionError):
-        return LLMServiceUnavailableError(str(exc) or "Ошибка соединения с LLM")
+        return LLMServiceUnavailableError(str(exc) or "LLM connection error")
     if isinstance(exc, APIStatusError):
         code = exc.status_code
         if code == 503:
-            return LLMServiceUnavailableError(str(exc) or "LLM сервис недоступен")
+            return LLMServiceUnavailableError(str(exc) or "LLM service unavailable")
         if code in (502, 504):
             return LLMServiceHTTPError(str(exc) or "LLM HTTP error", status_code=code)
-        return LLMServiceGeneralError(str(exc) or "Ошибка LLM сервиса")
+        return LLMServiceGeneralError(str(exc) or "LLM service error")
     return exc
 
 
 class AnthropicAdapter:
-    """Адаптер Async Anthropic SDK с маппингом ошибок и поддержкой tool calling."""
+    """Async Anthropic SDK adapter with error mapping and tool calling."""
 
     def __init__(self, *, api_key: str, model: str, **client_options: Any) -> None:
         self._model = model
@@ -89,9 +89,9 @@ class AnthropicAdapter:
             if message.content and not parts:
                 block_types = [type(b).__name__ for b in message.content]
                 raise LLMServiceGeneralError(
-                    f"Anthropic вернул нетекстовый ответ (stop_reason: {reason}, блоки: {block_types})"
+                    f"Anthropic returned a non-text response (stop_reason: {reason}, blocks: {block_types})"
                 )
-            raise LLMServiceGeneralError(f"Пустой ответ от Anthropic (stop_reason: {reason})")
+            raise LLMServiceGeneralError(f"Empty Anthropic response (stop_reason: {reason})")
         return text
 
     async def generate_with_tools_async(

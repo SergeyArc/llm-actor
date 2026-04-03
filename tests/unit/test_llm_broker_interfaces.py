@@ -10,7 +10,7 @@ from tests.dummy_llm_client import DummyLLMClient
 
 
 async def test_llm_client_interface_compliance():
-    """Тест проверки соответствия клиентов интерфейсам."""
+    """Dummy and wrapped clients satisfy protocol interfaces."""
     settings = LLMActorSettings()
     dummy_client = DummyLLMClient(settings=settings)
     circuit_breaker = CircuitBreaker(settings=settings, metrics=None)
@@ -26,6 +26,6 @@ async def test_llm_client_interface_compliance():
 
 
 async def test_service_client_implements_interface(service):
-    """Тест проверки что client в сервисе реализует интерфейс."""
+    """Service exposes LLMClientWithCircuitBreakerInterface."""
     assert isinstance(service.client, LLMClientWithCircuitBreakerInterface)
     assert hasattr(service.client, "generate")

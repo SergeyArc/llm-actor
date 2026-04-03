@@ -131,12 +131,12 @@ class LLMActorService:
 
     @property
     def pool(self) -> SupervisedActorPool:
-        """Доступ к пулу акторов для мониторинга (используется в тестах и API для get_health_status())."""
+        """Actor pool for monitoring (tests and get_health_status())."""
         return self._pool
 
     @property
     def client(self) -> LLMClientWithCircuitBreakerInterface:
-        """Доступ к клиенту для проверки интерфейса (используется в тестах)."""
+        """Wrapped client for interface checks (used in tests)."""
         return self._client
 
     async def start(self) -> None:
@@ -202,16 +202,14 @@ class LLMActorService:
         priority: int = 10,
     ) -> list[str | Any | Exception]:
         """
-        Пакетная обработка запросов с параллельным выполнением.
+        Process many requests concurrently.
 
         Args:
-            requests: Список кортежей (промпт или LLMRequest, response_model)
+            requests: List of (prompt or LLMRequest, response_model) pairs.
 
         Returns:
-            Список результатов. Каждый элемент может быть:
-            - str: если response_model был None
-            - объект типа response_model: если валидация прошла успешно
-            - Exception: если произошла ошибка при обработке запроса
+            One entry per input: ``str`` if ``response_model`` was None; a validated
+            model instance on success; or an ``Exception`` if that item failed.
         """
         self._logger.info(f"Processing batch of {len(requests)} requests")
         tracer = otel_tracing.get_tracer()

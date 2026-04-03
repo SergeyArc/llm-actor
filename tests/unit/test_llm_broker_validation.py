@@ -22,7 +22,7 @@ from tests.models import User
 
 
 async def test_ask_with_invalid_json_response_model(service, mock_llm_response):
-    """Тест обработки невалидного JSON при использовании response_model."""
+    """Invalid JSON with response_model raises JSONDecodeError."""
     prompt = "invalid_json"
     mock_llm_response[prompt] = "not a json string"
 
@@ -31,7 +31,7 @@ async def test_ask_with_invalid_json_response_model(service, mock_llm_response):
 
 
 async def test_ask_with_mismatched_json_structure(service, mock_llm_response):
-    """Тест обработки JSON с несоответствующей структурой модели."""
+    """JSON shape mismatch with model raises ValidationError."""
     prompt = "mismatched_json"
     mock_llm_response[prompt] = '{"name": "Alice"}'
 
