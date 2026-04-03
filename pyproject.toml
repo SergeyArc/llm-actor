@@ -12,12 +12,12 @@ dependencies = [
     "pydantic~=2.9.2",
     "pydantic-settings~=2.5.2",
     "loguru>=0.7.0",
-    "prometheus-client>=0.19.0",
     "opentelemetry-api>=1.25.0",
 ]
 
 [project.optional-dependencies]
 gigachat = ["gigachat"]
+metrics = ["prometheus-client>=0.19.0"]
 openai = ["openai"]
 
 [dependency-groups]
@@ -25,6 +25,7 @@ dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
     "mypy>=1.11.0",
+    "prometheus-client>=0.19.0",
     "ruff>=0.6.0",
     "opentelemetry-sdk>=1.25.0",
 ]
@@ -81,6 +82,14 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "openai"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "gigachat"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "gigachat.models"
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

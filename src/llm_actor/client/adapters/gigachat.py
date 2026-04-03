@@ -1,12 +1,5 @@
 from typing import Any, cast
 
-try:
-    from gigachat import GigaChat
-    from gigachat.exceptions import AuthenticationError, GigaChatException, RateLimitError
-except ImportError:
-    # Ожидаем, что пользователь установит gigachat для использования этого адаптера
-    pass
-
 from llm_actor.core.request import LLMRequest
 from llm_actor.exceptions import (
     LLMServiceGeneralError,
@@ -54,10 +47,10 @@ class GigaChatAdapter:
         """
         try:
             from gigachat import GigaChat
-        except ImportError:
+        except ImportError as err:
             raise ImportError(
                 "Пакет 'gigachat' не установлен. Пожалуйста, выполните 'pip install gigachat'."
-            )
+            ) from err
 
         self._model = model
         self._client = GigaChat(

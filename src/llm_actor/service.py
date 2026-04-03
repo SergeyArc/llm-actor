@@ -12,7 +12,7 @@ from llm_actor.client.retry import LLMClientWithRetry
 from llm_actor.client.tool_loop import ToolCallOrchestratorClient
 from llm_actor.core.request import LLMRequest
 from llm_actor.logger import BrokerLogger
-from llm_actor.metrics import MetricsCollector
+from llm_actor.metrics import MetricsCollector, default_metrics_collector
 from llm_actor.resilience.circuit_breaker import CircuitBreaker
 from llm_actor.settings import LLMBrokerSettings
 
@@ -34,7 +34,7 @@ class LLMBrokerService:
     ):
         self._base_client = base_client
         self._settings = settings or LLMBrokerSettings()
-        self._metrics = metrics or MetricsCollector()
+        self._metrics = metrics if metrics is not None else default_metrics_collector()
         self._logger = BrokerLogger.get_logger(name="llm_actor_service")
 
         circuit_breaker = CircuitBreaker(settings=self._settings, metrics=self._metrics)

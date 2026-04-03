@@ -3,16 +3,21 @@ from unittest.mock import patch
 
 import pytest
 import pytest_asyncio
-from prometheus_client import REGISTRY
 
 from llm_actor import LLMBrokerService
 from llm_actor.core.request import LLMRequest
+from llm_actor.metrics import is_prometheus_metrics_available
 from tests.dummy_llm_client import DummyLLMClient
 
 
 @pytest.fixture(autouse=True)
 def clear_prometheus_registry():
-    """Очистка реестра Prometheus перед каждым тестом."""
+    """Очистка реестра Prometheus перед каждым тестом (только при установленном prometheus-client)."""
+    if not is_prometheus_metrics_available():
+        yield
+        return
+    from prometheus_client import REGISTRY
+
     collectors = list(REGISTRY._collector_to_names.keys())
     for collector in collectors:
         REGISTRY.unregister(collector)

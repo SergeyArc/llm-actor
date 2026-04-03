@@ -85,12 +85,13 @@ class AnthropicAdapter:
                 parts.append(str(block.get("text", "")))
         text = "".join(parts).strip()
         if not text:
+            reason = getattr(message, "stop_reason", "unknown")
             if message.content and not parts:
                 block_types = [type(b).__name__ for b in message.content]
                 raise LLMServiceGeneralError(
-                    f"Anthropic вернул нетекстовый ответ (типы блоков: {block_types})"
+                    f"Anthropic вернул нетекстовый ответ (stop_reason: {reason}, блоки: {block_types})"
                 )
-            raise LLMServiceGeneralError("Пустой ответ от Anthropic")
+            raise LLMServiceGeneralError(f"Пустой ответ от Anthropic (stop_reason: {reason})")
         return text
 
     async def generate_with_tools_async(

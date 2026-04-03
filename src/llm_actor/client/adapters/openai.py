@@ -80,9 +80,14 @@ class OpenAIAdapter:
 
         if not completion.choices:
             raise LLMServiceGeneralError("Пустой ответ от OpenAI: нет choices")
-        content = completion.choices[0].message.content
+
+        choice = completion.choices[0]
+        content = choice.message.content
+
         if content is None:
-            raise LLMServiceGeneralError("Пустой ответ от OpenAI")
+            reason = getattr(choice, "finish_reason", "unknown")
+            raise LLMServiceGeneralError(f"Пустой ответ от LLM (finish_reason: {reason})")
+
         return cast(str, content)
 
     async def generate_with_tools_async(

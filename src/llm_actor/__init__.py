@@ -27,7 +27,11 @@ from llm_actor.exceptions import (
     ToolLoopMaxIterationsError,
 )
 from llm_actor.logger import BrokerLogger
-from llm_actor.metrics import MetricsCollector
+from llm_actor.metrics import (
+    MetricsCollector,
+    default_metrics_collector,
+    is_prometheus_metrics_available,
+)
 from llm_actor.resilience.circuit_breaker import CircuitBreaker
 from llm_actor.service import LLMBrokerService
 from llm_actor.settings import LLMBrokerSettings
@@ -57,6 +61,8 @@ __all__ = [
     "LLMServiceTimeoutError",
     "LLMServiceUnavailableError",
     "MetricsCollector",
+    "default_metrics_collector",
+    "is_prometheus_metrics_available",
     "ModelActor",
     "OverloadError",
     "PoolShuttingDownError",

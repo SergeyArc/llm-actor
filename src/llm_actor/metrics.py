@@ -1,10 +1,35 @@
-from prometheus_client import REGISTRY as _DEFAULT_REGISTRY
-from prometheus_client import CollectorRegistry, Counter, Gauge, Histogram
+from __future__ import annotations
+
+import importlib.util
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from prometheus_client import CollectorRegistry
+
+
+_METRICS_INSTALL_HINT = "pip install 'llm-actor[metrics]'"
+
+
+def is_prometheus_metrics_available() -> bool:
+    return importlib.util.find_spec("prometheus_client") is not None
+
+
+def default_metrics_collector() -> MetricsCollector | None:
+    if not is_prometheus_metrics_available():
+        return None
+    return MetricsCollector()
 
 
 class MetricsCollector:
     def __init__(self, registry: CollectorRegistry | None = None) -> None:
-        reg = registry if registry is not None else _DEFAULT_REGISTRY
+        try:
+            from prometheus_client import REGISTRY, Counter, Gauge, Histogram
+        except ImportError as exc:
+            raise ImportError(
+                f"Prometheus metrics require optional dependency: {_METRICS_INSTALL_HINT}"
+            ) from exc
+
+        reg = registry if registry is not None else REGISTRY
         self.inbox_size_gauge = Gauge(
             "llm_actor_inbox_size",
             "Size of shared pool task queue",

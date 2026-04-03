@@ -185,7 +185,6 @@ source = { editable = "." }
 dependencies = [
     { name = "loguru" },
     { name = "opentelemetry-api" },
-    { name = "prometheus-client" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
 ]
@@ -193,6 +192,9 @@ dependencies = [
 [package.optional-dependencies]
 gigachat = [
     { name = "gigachat" },
+]
+metrics = [
+    { name = "prometheus-client" },
 ]
 openai = [
     { name = "openai" },
@@ -202,6 +204,7 @@ openai = [
 dev = [
     { name = "mypy" },
     { name = "opentelemetry-sdk" },
+    { name = "prometheus-client" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "ruff" },
@@ -213,16 +216,17 @@ requires-dist = [
     { name = "loguru", specifier = ">=0.7.0" },
     { name = "openai", marker = "extra == 'openai'" },
     { name = "opentelemetry-api", specifier = ">=1.25.0" },
-    { name = "prometheus-client", specifier = ">=0.19.0" },
+    { name = "prometheus-client", marker = "extra == 'metrics'", specifier = ">=0.19.0" },
     { name = "pydantic", specifier = "~=2.9.2" },
     { name = "pydantic-settings", specifier = "~=2.5.2" },
 ]
-provides-extras = ["gigachat", "openai"]
+provides-extras = ["gigachat", "metrics", "openai"]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "mypy", specifier = ">=1.11.0" },
     { name = "opentelemetry-sdk", specifier = ">=1.25.0" },
+    { name = "prometheus-client", specifier = ">=0.19.0" },
     { name = "pytest", specifier = ">=8.0.0" },
     { name = "pytest-asyncio", specifier = ">=0.23.0" },
     { name = "ruff", specifier = ">=0.6.0" },

@@ -3,9 +3,8 @@ import re
 from dataclasses import replace
 from typing import Any, TypeVar, cast, overload
 
-from pydantic import ValidationError
-
 from opentelemetry.trace import StatusCode
+from pydantic import ValidationError
 
 from llm_actor import tracing as otel_tracing
 from llm_actor.client.interface import LLMClientInterface, ToolCapableClientInterface

@@ -1,6 +1,6 @@
 # LLM Actor
 
-Изолированный Python-пакет для эффективного управления запросами к Large Language Models (LLM). Обеспечивает высокую производительность через пул акторов, надежность через Circuit Breaker и повторные попытки (Retry), а также мониторинг через Prometheus.
+Изолированный Python-пакет для эффективного управления запросами к Large Language Models (LLM). Обеспечивает высокую производительность через пул акторов, надежность через Circuit Breaker и повторные попытки (Retry), а также опциональный мониторинг через Prometheus (`llm-actor[metrics]`).
 
 ## Основные возможности
 
@@ -13,14 +13,14 @@
 - **Embedded Batching**: Прозрачная группировка запросов для эффективного использования Batch API провайдеров (скидки до 50% у ряда вендоров на апрель 2026).
 - **Structured Output**: Глубокая интеграция с Pydantic V2 для получения строго типизированных данных без оверхеда на сторонние фреймворки.
 - **LLMRequest и адаптеры**: Единый DTO запроса; готовые адаптеры OpenAI, OpenAI-compatible и Anthropic с маппингом ошибок провайдера в исключения брокера; фабрики `LLMBrokerService.from_*`.
-- **Monitoring**: Нативный экспорт метрик Prometheus (latency, error rate, actor pool state).
+- **Monitoring**: Опциональный экспорт метрик Prometheus при установке extra `[metrics]` (latency, error rate, actor pool state).
 - **Логирование**: Единый loguru-based `BrokerLogger` с контекстом пула/актора/запроса и опциональной подстановкой `trace_id` из OpenTelemetry в каждую запись.
 - **Backpressure Control**: Управление конкурентностью для локальных моделей (vLLM, Ollama), предотвращающее перегрузку GPU.
 
 ## Требования
 
 - **Python**: 3.13
-- **Ключевые зависимости**: Pydantic V2, loguru, prometheus-client, OpenTelemetry API (только для контекста трасс и поля `trace_id` в логах; экспорт спанов настраивает приложение-хост).
+- **Ключевые зависимости**: Pydantic V2, loguru, OpenTelemetry API (только для контекста трасс и поля `trace_id` в логах; экспорт спанов настраивает приложение-хост). Метрики Prometheus — через optional extra `[metrics]` (`prometheus-client`).
 
 ## Установка
 
@@ -34,9 +34,17 @@ pip install llm-actor[gigachat]
 # С поддержкой OpenAI (SDK для встроенного адаптера)
 pip install llm-actor[openai]
 
+# С метриками Prometheus (по умолчанию брокер работает без них)
+pip install llm-actor[metrics]
+
+# Несколько extras сразу (пример)
+pip install llm-actor[openai,metrics]
+
 # Адаптер Anthropic: отдельно ставится пакет anthropic (в pyproject нет extra [anthropic])
 pip install anthropic
 ```
+
+Без extra `[metrics]` зависимость `prometheus-client` не ставится: брокер работает без экспорта метрик. Явный `MetricsCollector()` без установленного extra завершится `ImportError` с подсказкой установить `[metrics]`.
 
 ## Быстрый старт
 
@@ -93,8 +101,10 @@ async def main():
 
     # Клиент из п.1; либо: service = LLMBrokerService.from_openai(..., settings=settings)
     base_client = MyLLMClient()
+    # Метрики: по умолчанию только при pip install llm-actor[metrics].
+    # Без extra коллектор не создаётся; свой: metrics=MetricsCollector() после установки [metrics].
     service = LLMBrokerService(base_client=base_client, settings=settings)
-    
+
     await service.start()
     
     try:
@@ -144,6 +154,12 @@ results = await service.generate_batch(requests, priority=20)
 
 ### Мониторинг
 
+Prometheus — **опционально** (`prometheus-client` только в extra `[metrics]`).
+
+При `pip install llm-actor[metrics]` по умолчанию `LLMBrokerService` создаёт `MetricsCollector`. Без extra внутренний `metrics` остаётся `None` (нет накладных расходов и зависимости). Свой коллектор передайте в `LLMBrokerService(..., metrics=...)`, либо используйте `default_metrics_collector()` и `is_prometheus_metrics_available()` из пакета.
+
+Список метрик ниже актуален **только** при установленном `[metrics]` и созданном `MetricsCollector`:
+
 Пакет собирает следующие ключевые метрики Prometheus:
 - `llm_actor_inbox_size`: текущий размер общей очереди задач (shared priority queue).
 - `llm_batch_processing_duration_seconds`: гистограмма времени обработки батча (по акторам).
@@ -187,6 +203,7 @@ results = await service.generate_batch(requests, priority=20)
 | **Авто-батчинг** | ✅ Из коробки | ❌ | ❌ | ⚠️ Частично |
 | **Circuit Breaker** | ✅ Интегрирован | ✅ (только в прокси) | ❌ | ❌ |
 | **Validation Retry**| ✅ Семантический | ❌ | ✅ | ❌ |
+| **Prometheus-метрики** | ✅ Опционально (`[metrics]`) | ⚠️ В прокси | ❌ | ⚠️ Частично |
 
 ## Философия дизайна
 
@@ -195,7 +212,7 @@ results = await service.generate_batch(requests, priority=20)
 - **Shared Priority Queue**: Все задачи попадают в единую очередь с приоритетами. Это гарантирует, что высокоприоритетные задачи обрабатываются в первую очередь, а нагрузка распределяется между акторами максимально равномерно (pull model).
 - **Изоляция сбоев**: Падение одного воркера при обработке сложного промпта не аффектит весь пул. Супервизор (`SupervisedActorPool`) автоматически перезапустит воркера и вернет его в строй.
 - **Backpressure**: Пакет выступает защитным буфером между вашим приложением и LLM. Вместо бесконечного создания задач, вызывающих `MemoryError`, брокер удерживает нагрузку в пределах заданного пула.
-- **Лёгкое ядро**: Без тяжёлых оркестраторов. Ядро опирается на `pydantic`, `loguru`, `prometheus-client` и `opentelemetry-api` (без обязательного SDK/экспортёра в рантайме библиотеки — их подключает хост).
+- **Лёгкое ядро**: Без тяжёлых оркестраторов. Ядро опирается на `pydantic`, `loguru` и `opentelemetry-api` (без обязательного SDK/экспортёра в рантайме библиотеки — их подключает хост). `prometheus-client` подключается только с extra `[metrics]`.
 
 ## Производительность (Benchmark)
 
@@ -212,7 +229,7 @@ results = await service.generate_batch(requests, priority=20)
 
 ```bash
 cd llm_actor
-uv sync --all-extras   # gigachat + openai; для mypy/тестов Anthropic при необходимости: uv pip install anthropic
+uv sync --all-extras --group dev   # extras + dev (в dev входит prometheus-client для pytest/скриптов)
 pytest
 ruff check .
 mypy src
@@ -224,6 +241,6 @@ mypy src
 
 1.  **Провайдеры "из коробки"**: Адаптеры OpenAI, OpenAI-compatible и Anthropic уже входят в пакет (см. `LLMBrokerService.from_*`). Дополнительные вендоры и унификация GigaChat/vLLM — по мере необходимости.
 2.  **OpenTelemetry**: В пакете уже есть спаны жизненного цикла (брокер, очередь, актор, LLM-запрос, валидация, tool calls) и проброс контекста; хост подключает SDK и экспортёры. Дальнейшее развитие — семантические конвенции, тонкая настройка атрибутов, опциональные переключатели «шумных» спанов.
-3.  **Cost & Token Tracking**: Встроенный подсчет токенов и примерной стоимости каждого запроса на основе актуальных тарифов провайдеров. Экспорт статистики через метрики Prometheus.
+3.  **Cost & Token Tracking**: Встроенный подсчет токенов и примерной стоимости каждого запроса на основе актуальных тарифов провайдеров. Экспорт статистики через метрики Prometheus (при установленном extra `[metrics]`).
 4.  **Priority Queuing Improvements**: Динамическая переприоритизация задач в очереди на основе их "возраста" (предотвращение голодания низкоприоритетных задач).
 
