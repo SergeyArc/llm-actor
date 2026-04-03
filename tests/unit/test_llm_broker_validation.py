@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock
 import pytest
 from pydantic import ValidationError
 
-from llm_actor import LLMBrokerSettings
+from llm_actor import LLMActorSettings
 from llm_actor.actors.pool import _PrioritizedMessage
 from llm_actor.actors.worker import ModelActor
 from llm_actor.client.llm import (
@@ -40,7 +40,7 @@ async def test_ask_with_mismatched_json_structure(service, mock_llm_response):
 
 
 async def test_semantic_retry_succeeds_on_second_attempt() -> None:
-    settings = LLMBrokerSettings(LLM_VALIDATION_RETRY_MAX_ATTEMPTS=3)
+    settings = LLMActorSettings(LLM_VALIDATION_RETRY_MAX_ATTEMPTS=3)
     mock_base_client = AsyncMock()
     mock_base_client.generate_async.side_effect = [
         "not a json string",
@@ -58,7 +58,7 @@ async def test_semantic_retry_succeeds_on_second_attempt() -> None:
 
 
 async def test_semantic_retry_exhausts_all_max_attempts() -> None:
-    settings = LLMBrokerSettings(LLM_VALIDATION_RETRY_MAX_ATTEMPTS=3)
+    settings = LLMActorSettings(LLM_VALIDATION_RETRY_MAX_ATTEMPTS=3)
     mock_base_client = AsyncMock()
     mock_base_client.generate_async.return_value = "not a json string"
     client = LLMClientWithCircuitBreaker(
@@ -93,7 +93,7 @@ def test_build_json_prompt_contains_exact_json_dumps_schema():
 def test_settings_ignores_llm_failure_rate_env_var(monkeypatch):
     """AC-3: LLM_FAILURE_RATE present in environment does not raise on settings load."""
     monkeypatch.setenv("LLM_FAILURE_RATE", "0.5")
-    settings = LLMBrokerSettings()
+    settings = LLMActorSettings()
     assert settings is not None
 
 
@@ -107,7 +107,7 @@ async def test_actor_raises_actor_failed_error_at_threshold():
     """
     from unittest.mock import patch
 
-    settings = LLMBrokerSettings(LLM_MAX_CONSECUTIVE_FAILURES=1, LLM_BATCH_SIZE=1)
+    settings = LLMActorSettings(LLM_MAX_CONSECUTIVE_FAILURES=1, LLM_BATCH_SIZE=1)
     mock_client = AsyncMock()
     shared_queue: asyncio.PriorityQueue[Any] = asyncio.PriorityQueue(
         maxsize=settings.LLM_MAX_QUEUE_SIZE
@@ -146,7 +146,7 @@ async def test_pool_requeues_pending_messages_on_actor_restart():
     """AC-2: Pending messages from ActorFailedError are returned to the pool queue."""
     from llm_actor.actors.pool import SupervisedActorPool
 
-    settings = LLMBrokerSettings(
+    settings = LLMActorSettings(
         LLM_NUM_ACTORS=1,
         LLM_MAX_CONSECUTIVE_FAILURES=1,
         LLM_BATCH_SIZE=1,

@@ -4,7 +4,7 @@ from unittest.mock import patch
 import pytest
 import pytest_asyncio
 
-from llm_actor import LLMBrokerService
+from llm_actor import LLMActorService
 from llm_actor.core.request import LLMRequest
 from llm_actor.metrics import is_prometheus_metrics_available
 from tests.dummy_llm_client import DummyLLMClient
@@ -67,12 +67,12 @@ def mock_llm_response(mock_llm_responses):
 
 @pytest_asyncio.fixture
 async def service(mock_llm_response):
-    """Фикстура для инициализированного и запущенного LLMBrokerService."""
-    from llm_actor import LLMBrokerSettings
+    """Фикстура для инициализированного и запущенного LLMActorService."""
+    from llm_actor import LLMActorSettings
 
-    settings = LLMBrokerSettings()
+    settings = LLMActorSettings()
     base_client = DummyLLMClient(settings=settings)
-    service = LLMBrokerService(base_client=base_client, settings=settings)
+    service = LLMActorService(base_client=base_client, settings=settings)
     await service.start()
     yield service
     await service.stop()

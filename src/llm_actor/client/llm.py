@@ -11,7 +11,7 @@ from llm_actor.client.interface import LLMClientInterface, ToolCapableClientInte
 from llm_actor.core.request import LLMRequest
 from llm_actor.core.tools import LLMResponse, ToolResult
 from llm_actor.exceptions import LLMServiceGeneralError
-from llm_actor.logger import BrokerLogger
+from llm_actor.logger import ActorLogger
 from llm_actor.resilience.circuit_breaker import CircuitBreaker
 
 T = TypeVar("T", bound=object)
@@ -99,7 +99,7 @@ class LLMClientWithCircuitBreaker:
         self._client: LLMClientInterface = base_client
         self._circuit_breaker = circuit_breaker
         self._max_validation_attempts = max_validation_attempts
-        self._logger = BrokerLogger.get_logger(name="llm_client")
+        self._logger = ActorLogger.get_logger(name="llm_client")
 
     async def _generate_raw_text(self, request: LLMRequest) -> str:
         tracer = otel_tracing.get_tracer()

@@ -11,10 +11,10 @@ from llm_actor.client.llm import LLMClientWithCircuitBreaker
 from llm_actor.client.retry import LLMClientWithRetry
 from llm_actor.client.tool_loop import ToolCallOrchestratorClient
 from llm_actor.core.request import LLMRequest
-from llm_actor.logger import BrokerLogger
+from llm_actor.logger import ActorLogger
 from llm_actor.metrics import MetricsCollector, default_metrics_collector
 from llm_actor.resilience.circuit_breaker import CircuitBreaker
-from llm_actor.settings import LLMBrokerSettings
+from llm_actor.settings import LLMActorSettings
 
 T = TypeVar("T", bound=object)
 
@@ -25,17 +25,17 @@ def _coerce_llm_request(prompt_or_request: str | LLMRequest) -> LLMRequest:
     return LLMRequest(prompt=prompt_or_request)
 
 
-class LLMBrokerService:
+class LLMActorService:
     def __init__(
         self,
         base_client: LLMClientInterface,
-        settings: LLMBrokerSettings | None = None,
+        settings: LLMActorSettings | None = None,
         metrics: MetricsCollector | None = None,
     ):
         self._base_client = base_client
-        self._settings = settings or LLMBrokerSettings()
+        self._settings = settings or LLMActorSettings()
         self._metrics = metrics if metrics is not None else default_metrics_collector()
-        self._logger = BrokerLogger.get_logger(name="llm_actor_service")
+        self._logger = ActorLogger.get_logger(name="llm_actor_service")
 
         circuit_breaker = CircuitBreaker(settings=self._settings, metrics=self._metrics)
         cb_client = cast(
@@ -64,10 +64,10 @@ class LLMBrokerService:
         *,
         api_key: str,
         model: str,
-        settings: LLMBrokerSettings | None = None,
+        settings: LLMActorSettings | None = None,
         metrics: MetricsCollector | None = None,
         **client_options: Any,
-    ) -> "LLMBrokerService":
+    ) -> "LLMActorService":
         from llm_actor.client.adapters.openai import OpenAIAdapter
 
         base = OpenAIAdapter(api_key=api_key, model=model, **client_options)
@@ -79,10 +79,10 @@ class LLMBrokerService:
         *,
         api_key: str,
         model: str,
-        settings: LLMBrokerSettings | None = None,
+        settings: LLMActorSettings | None = None,
         metrics: MetricsCollector | None = None,
         **client_options: Any,
-    ) -> "LLMBrokerService":
+    ) -> "LLMActorService":
         from llm_actor.client.adapters.anthropic import AnthropicAdapter
 
         base = AnthropicAdapter(api_key=api_key, model=model, **client_options)
@@ -95,10 +95,10 @@ class LLMBrokerService:
         api_key: str,
         model: str,
         base_url: str,
-        settings: LLMBrokerSettings | None = None,
+        settings: LLMActorSettings | None = None,
         metrics: MetricsCollector | None = None,
         **client_options: Any,
-    ) -> "LLMBrokerService":
+    ) -> "LLMActorService":
         from llm_actor.client.adapters.openai_compatible import OpenAICompatibleAdapter
 
         base = OpenAICompatibleAdapter(
@@ -114,10 +114,10 @@ class LLMBrokerService:
         model: str | None = None,
         scope: str | None = None,
         verify_ssl_certs: bool = True,
-        settings: LLMBrokerSettings | None = None,
+        settings: LLMActorSettings | None = None,
         metrics: MetricsCollector | None = None,
         **client_options: Any,
-    ) -> "LLMBrokerService":
+    ) -> "LLMActorService":
         from llm_actor.client.adapters.gigachat import GigaChatAdapter
 
         base = GigaChatAdapter(
@@ -140,12 +140,12 @@ class LLMBrokerService:
         return self._client
 
     async def start(self) -> None:
-        self._logger.info("Starting LLMBrokerService")
+        self._logger.info("Starting LLMActorService")
         await self._pool.start()
-        self._logger.info("LLMBrokerService started successfully")
+        self._logger.info("LLMActorService started successfully")
 
     async def stop(self) -> None:
-        self._logger.info("Stopping LLMBrokerService")
+        self._logger.info("Stopping LLMActorService")
         await self._pool.stop()
         if hasattr(self._base_client, "close") and callable(self._base_client.close):
             try:
@@ -153,7 +153,7 @@ class LLMBrokerService:
                 await self._base_client.close()
             except Exception as exc:
                 self._logger.error("Error while closing LLM client: {}", exc, exc_info=True)
-        self._logger.info("LLMBrokerService stopped successfully")
+        self._logger.info("LLMActorService stopped successfully")
 
     @overload
     async def generate(
@@ -184,7 +184,7 @@ class LLMBrokerService:
         tracer = otel_tracing.get_tracer()
         preview = otel_tracing.truncate_for_span_attribute(request.prompt)
         with tracer.start_as_current_span(
-            "llm_broker.generate",
+            "llm_actor.generate",
             attributes={
                 "llm_actor.prompt_preview": preview,
                 "llm_actor.priority": priority,
@@ -216,7 +216,7 @@ class LLMBrokerService:
         self._logger.info(f"Processing batch of {len(requests)} requests")
         tracer = otel_tracing.get_tracer()
         with tracer.start_as_current_span(
-            "llm_broker.generate_batch",
+            "llm_actor.generate_batch",
             attributes={"llm_actor.batch_size": len(requests)},
         ):
             tasks = []

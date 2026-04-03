@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 import pytest
 
-from llm_actor import LLMBrokerService, LLMBrokerSettings
+from llm_actor import LLMActorService, LLMActorSettings
 from llm_actor.client.interface import LLMClientWithCircuitBreakerInterface
 from llm_actor.client.llm import LLMClientWithCircuitBreaker
 from llm_actor.client.retry import LLMClientWithRetry
@@ -21,7 +21,7 @@ from tests.dummy_llm_client import DummyLLMClient
 
 async def test_retry_succeeds_after_transient_error():
     """Тест успешного retry после временной ошибки."""
-    settings = LLMBrokerSettings()
+    settings = LLMActorSettings()
     settings.LLM_RETRY_MAX_ATTEMPTS = 3
     settings.LLM_RETRY_BASE_BACKOFF = 0.1
     settings.LLM_RETRY_BACKOFF_CAP = 1.0
@@ -48,7 +48,7 @@ async def test_retry_succeeds_after_transient_error():
 
 async def test_retry_exponential_backoff():
     """Тест exponential backoff при retry."""
-    settings = LLMBrokerSettings()
+    settings = LLMActorSettings()
     settings.LLM_RETRY_MAX_ATTEMPTS = 4
     settings.LLM_RETRY_BASE_BACKOFF = 0.1
     settings.LLM_RETRY_BACKOFF_CAP = 0.5
@@ -91,7 +91,7 @@ async def test_retry_exponential_backoff():
 
 async def test_retry_backoff_cap():
     """Тест ограничения максимальной задержки backoff."""
-    settings = LLMBrokerSettings()
+    settings = LLMActorSettings()
     settings.LLM_RETRY_MAX_ATTEMPTS = 5
     settings.LLM_RETRY_BASE_BACKOFF = 1.0
     settings.LLM_RETRY_BACKOFF_CAP = 2.0
@@ -134,7 +134,7 @@ async def test_retry_backoff_cap():
 
 async def test_retry_fails_after_max_attempts():
     """Тест провала после исчерпания всех попыток."""
-    settings = LLMBrokerSettings()
+    settings = LLMActorSettings()
     settings.LLM_RETRY_MAX_ATTEMPTS = 3
     settings.LLM_RETRY_BASE_BACKOFF = 0.01
 
@@ -162,7 +162,7 @@ async def test_retry_fails_after_max_attempts():
 
 async def test_retry_handles_503_error():
     """Тест обработки ошибки 503 (Service Unavailable)."""
-    settings = LLMBrokerSettings()
+    settings = LLMActorSettings()
     settings.LLM_RETRY_MAX_ATTEMPTS = 3
     settings.LLM_RETRY_BASE_BACKOFF = 0.01
 
@@ -188,7 +188,7 @@ async def test_retry_handles_503_error():
 
 async def test_retry_handles_502_504_errors():
     """Тест обработки ошибок 502 и 504 (Bad Gateway, Gateway Timeout)."""
-    settings = LLMBrokerSettings()
+    settings = LLMActorSettings()
     settings.LLM_RETRY_MAX_ATTEMPTS = 3
     settings.LLM_RETRY_BASE_BACKOFF = 0.01
 
@@ -215,7 +215,7 @@ async def test_retry_handles_502_504_errors():
 
 async def test_retry_handles_llm_service_timeout_error():
     """Тест retry при LLMServiceTimeoutError."""
-    settings = LLMBrokerSettings()
+    settings = LLMActorSettings()
     settings.LLM_RETRY_MAX_ATTEMPTS = 3
     settings.LLM_RETRY_BASE_BACKOFF = 0.01
 
@@ -241,7 +241,7 @@ async def test_retry_handles_llm_service_timeout_error():
 
 async def test_retry_does_not_retry_non_transient_errors():
     """Тест что не-transient ошибки не повторяются."""
-    settings = LLMBrokerSettings()
+    settings = LLMActorSettings()
     settings.LLM_RETRY_MAX_ATTEMPTS = 3
 
     base_client = DummyLLMClient(settings=settings)
@@ -260,8 +260,8 @@ async def test_retry_does_not_retry_non_transient_errors():
 
 
 async def test_retry_integration_with_service():
-    """Интеграционный тест retry логики в составе LLMBrokerService."""
-    settings = LLMBrokerSettings()
+    """Интеграционный тест retry логики в составе LLMActorService."""
+    settings = LLMActorSettings()
     settings.LLM_RETRY_MAX_ATTEMPTS = 3
     settings.LLM_RETRY_BASE_BACKOFF = 0.01
     settings.LLM_NUM_ACTORS = 1
@@ -275,7 +275,7 @@ async def test_retry_integration_with_service():
         ],
     )
 
-    service = LLMBrokerService(base_client=base_client, settings=settings)
+    service = LLMActorService(base_client=base_client, settings=settings)
     await service.start()
 
     try:

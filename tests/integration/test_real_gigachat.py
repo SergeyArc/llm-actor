@@ -1,6 +1,6 @@
 import os
 import pytest
-from llm_actor import LLMBrokerService, LLMRequest
+from llm_actor import LLMActorService, LLMRequest
 
 # Интеграционный тест для GigaChat через реальное API
 # Запускается только с флагом --integration
@@ -17,7 +17,7 @@ async def test_real_gigachat_tool_calling(gigachat_credentials):
     model = os.getenv("GIGACHAT_MODEL", "Sber/GigaChat-Max-V2")
     base_url = os.getenv("LLM_BASE_URL", "https://inference.airi.net:46783/v1")
     
-    service = LLMBrokerService.from_gigachat(
+    service = LLMActorService.from_gigachat(
         credentials=gigachat_credentials,
         model=model,
         base_url=base_url

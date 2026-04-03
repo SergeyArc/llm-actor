@@ -1,6 +1,6 @@
 import os
 import pytest
-from llm_actor import LLMBrokerService, LLMRequest
+from llm_actor import LLMActorService, LLMRequest
 
 # Интеграционный тест для Anthropic SDK (или совместимых моделей типа Qwen)
 # Запускается только с флагом --integration
@@ -17,7 +17,7 @@ async def test_real_anthropic_tool_calling(anthropic_api_key):
     model = os.getenv("ANTHROPIC_MODEL", "claude-3-5-sonnet-latest")
     base_url = os.getenv("ANTHROPIC_BASE_URL", "https://api.anthropic.com")
     
-    service = LLMBrokerService.from_anthropic(
+    service = LLMActorService.from_anthropic(
         api_key=anthropic_api_key,
         model=model,
         base_url=base_url

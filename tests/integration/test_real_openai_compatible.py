@@ -1,6 +1,6 @@
 import os
 import pytest
-from llm_actor import LLMBrokerService, LLMRequest
+from llm_actor import LLMActorService, LLMRequest
 
 # Интеграционный тест для OpenAI Compatible API (vLLM, Ollama)
 # Запускается только с флагом --integration
@@ -17,7 +17,7 @@ async def test_real_openai_compatible_tool_calling(openai_api_key):
     model = os.getenv("LLM_MODEL_NAME", "gpt-4o")
     base_url = os.getenv("LLM_BASE_URL", "https://api.openai.com/v1")
     
-    service = LLMBrokerService.from_openai(
+    service = LLMActorService.from_openai(
         api_key=openai_api_key,
         model=model,
         base_url=base_url

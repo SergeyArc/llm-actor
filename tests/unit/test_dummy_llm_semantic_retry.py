@@ -3,20 +3,20 @@ import json
 import pytest
 import pytest_asyncio
 
-from llm_actor import LLMBrokerService, LLMBrokerSettings
+from llm_actor import LLMActorService, LLMActorSettings
 from tests.dummy_llm_client import DummyLLMClient
 from tests.models import User
 
 
 @pytest_asyncio.fixture
 async def service_with_fast_dummy():
-    settings = LLMBrokerSettings()
+    settings = LLMActorSettings()
     settings.LLM_NUM_ACTORS = 1
     settings.LLM_BATCH_SIZE = 1
     base_client = DummyLLMClient(settings=settings)
     base_client.base_latency = 0.0
     base_client.latency_variance = 0.0
-    service = LLMBrokerService(base_client=base_client, settings=settings)
+    service = LLMActorService(base_client=base_client, settings=settings)
     await service.start()
     yield service, base_client
     await service.stop()

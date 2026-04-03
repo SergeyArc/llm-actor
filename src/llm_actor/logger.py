@@ -14,7 +14,7 @@ except ImportError:
     _otel_trace = None  # type: ignore[assignment]
 
 
-def _broker_log_record_patcher(record: Record) -> None:
+def _actor_log_record_patcher(record: Record) -> None:
     extra = record["extra"]
     actor_id = extra.get("actor_id")
     pool_id = extra.get("pool_id")
@@ -36,7 +36,7 @@ def _broker_log_record_patcher(record: Record) -> None:
         extra["trace_tag"] = ""
 
 
-class BrokerLogger:
+class ActorLogger:
     """Централизованный логгер для пакета llm_actor на основе loguru."""
 
     _configured = False
@@ -53,7 +53,7 @@ class BrokerLogger:
         # Добавляем патчер, который заполняет теги (actor_tag, trace_tag и т.д.)
         # Это безопасно для существующих проектов: если в формате вывода этих полей нет,
         # они просто сохраняются в extra-словаре записи.
-        logger.configure(patcher=_broker_log_record_patcher)
+        logger.configure(patcher=_actor_log_record_patcher)
         cls._configured = True
 
     @classmethod

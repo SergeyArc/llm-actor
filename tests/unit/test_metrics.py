@@ -5,14 +5,14 @@ import pytest
 import pytest_asyncio
 from prometheus_client import CollectorRegistry
 
-from llm_actor import LLMBrokerService
+from llm_actor import LLMActorService
 from llm_actor.actors.pool import SupervisedActorPool, _PrioritizedMessage
 from llm_actor.actors.worker import ModelActor
 from llm_actor.core.messages import ActorMessage
 from llm_actor.core.request import LLMRequest
 from llm_actor.exceptions import ActorFailedError
 from llm_actor.metrics import MetricsCollector
-from llm_actor.settings import LLMBrokerSettings
+from llm_actor.settings import LLMActorSettings
 from tests.dummy_llm_client import DummyLLMClient
 
 
@@ -23,21 +23,21 @@ def isolated_registry() -> CollectorRegistry:
 
 @pytest_asyncio.fixture
 async def metrics_service(isolated_registry: CollectorRegistry):
-    settings = LLMBrokerSettings(
+    settings = LLMActorSettings(
         LLM_NUM_ACTORS=1,
         LLM_BATCH_SIZE=1,
         LLM_BATCH_TIMEOUT=0.01,
     )
     metrics = MetricsCollector(registry=isolated_registry)
     base_client = DummyLLMClient(settings=settings)
-    service = LLMBrokerService(base_client=base_client, settings=settings, metrics=metrics)
+    service = LLMActorService(base_client=base_client, settings=settings, metrics=metrics)
     await service.start()
     yield service, isolated_registry
     await service.stop()
 
 
 async def test_batches_processed_counter_increments(
-    metrics_service: tuple[LLMBrokerService, CollectorRegistry],
+    metrics_service: tuple[LLMActorService, CollectorRegistry],
 ) -> None:
     service, registry = metrics_service
     before = registry.get_sample_value("llm_batches_processed_total", {"actor_id": "actor-0"})
@@ -51,7 +51,7 @@ async def test_batches_processed_counter_increments(
 
 async def test_batches_failed_counter_increments_when_process_batch_raises() -> None:
     """Инкремент llm_batches_failed_total при исключении из _process_batch."""
-    settings = LLMBrokerSettings(
+    settings = LLMActorSettings(
         LLM_MAX_CONSECUTIVE_FAILURES=10,
         LLM_BATCH_SIZE=1,
         LLM_BATCH_TIMEOUT=0.01,
@@ -93,7 +93,7 @@ async def test_batches_failed_counter_increments_when_process_batch_raises() -> 
 async def test_circuit_breaker_trips_counter_increments(
     isolated_registry: CollectorRegistry,
 ) -> None:
-    settings = LLMBrokerSettings(
+    settings = LLMActorSettings(
         LLM_NUM_ACTORS=1,
         LLM_BATCH_SIZE=1,
         LLM_BATCH_TIMEOUT=0.01,
@@ -104,7 +104,7 @@ async def test_circuit_breaker_trips_counter_increments(
     for i in range(6):
         base_client.set_prompt_error(f"cb_fail_{i}", RuntimeError(f"err {i}"))
 
-    service = LLMBrokerService(base_client=base_client, settings=settings, metrics=metrics)
+    service = LLMActorService(base_client=base_client, settings=settings, metrics=metrics)
     await service.start()
     try:
         assert isolated_registry.get_sample_value("llm_circuit_breaker_trips_total") in (None, 0.0)
@@ -122,7 +122,7 @@ async def test_circuit_breaker_trips_counter_increments(
 async def test_actor_restarts_counter_increments(
     isolated_registry: CollectorRegistry,
 ) -> None:
-    settings = LLMBrokerSettings(
+    settings = LLMActorSettings(
         LLM_NUM_ACTORS=1,
         LLM_MAX_CONSECUTIVE_FAILURES=1,
         LLM_BATCH_SIZE=1,

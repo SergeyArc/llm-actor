@@ -13,9 +13,9 @@ from llm_actor.client.interface import LLMClientWithCircuitBreakerInterface
 from llm_actor.core.messages import ActorMessage
 from llm_actor.core.request import LLMRequest
 from llm_actor.exceptions import ActorFailedError, OverloadError, PoolShuttingDownError
-from llm_actor.logger import BrokerLogger
+from llm_actor.logger import ActorLogger
 from llm_actor.metrics import MetricsCollector
-from llm_actor.settings import LLMBrokerSettings
+from llm_actor.settings import LLMActorSettings
 
 T = TypeVar("T", bound=object)
 
@@ -59,7 +59,7 @@ class SupervisedActorPool:
     def __init__(
         self,
         client: LLMClientWithCircuitBreakerInterface,
-        settings: LLMBrokerSettings,
+        settings: LLMActorSettings,
         metrics: MetricsCollector | None = None,
         pool_id: str | None = None,
     ) -> None:
@@ -78,7 +78,7 @@ class SupervisedActorPool:
         self._running = False
         self._shared_queue: asyncio.PriorityQueue[_PrioritizedMessage] | None = None
         self._sequence_counter: int = 0
-        self._logger = BrokerLogger.bind_context(pool_id=self._pool_id)
+        self._logger = ActorLogger.bind_context(pool_id=self._pool_id)
 
     @property
     def pool_id(self) -> str:
@@ -249,7 +249,7 @@ class SupervisedActorPool:
     async def _requeue_pending_messages(self, pending_messages: list[ActorMessage[Any]]) -> None:
         tracer = otel_tracing.get_tracer()
         for message in pending_messages:
-            # Сбрасываем otel_context: оригинальный broker-спан уже завершён, новый
+            # Сбрасываем otel_context: корневой generate-спан уже завершён, новый
             # wait-спан должен использовать текущий (супервизорский) контекст, а не
             # ссылаться на закрытый родительский спан.
             message.otel_context = None

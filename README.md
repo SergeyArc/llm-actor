@@ -43,19 +43,19 @@ pip install "llm-actor[openai,anthropic,gigachat,metrics]"
 Используйте удобные фабрики для популярных провайдеров:
 
 ```python
-from llm_actor import LLMBrokerService, LLMBrokerSettings
+from llm_actor import LLMActorService, LLMActorSettings
 
 # Конфигурация брокера
-settings = LLMBrokerSettings(
+settings = LLMActorSettings(
     LLM_NUM_ACTORS=10,               # Размер пула воркеров
     LLM_RETRY_MAX_ATTEMPTS=3,        # Повторы при сетевых ошибках
 )
 
 # OpenAI / OpenAI Compatible (vLLM, Ollama)
-service = LLMBrokerService.from_openai(api_key="...", model="gpt-4o", settings=settings)
+service = LLMActorService.from_openai(api_key="...", model="gpt-4o", settings=settings)
 
 # GigaChat (экспериментально)
-service = LLMBrokerService.from_gigachat(credentials="...", model="GigaChat-Max-V2")
+service = LLMActorService.from_gigachat(credentials="...", model="GigaChat-Max-V2")
 ```
 
 ## Разработка и Тестирование

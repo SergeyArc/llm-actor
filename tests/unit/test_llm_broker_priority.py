@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 import pytest
 
-from llm_actor import LLMBrokerService, LLMBrokerSettings
+from llm_actor import LLMActorService, LLMActorSettings
 from llm_actor.actors.pool import _PrioritizedMessage
 from llm_actor.actors.worker import ModelActor
 from llm_actor.core.messages import ActorMessage
@@ -57,14 +57,14 @@ async def test_high_priority_processed_before_low() -> None:
             await start_event.wait()
         return f"Response for: {prompt}"
 
-    settings = LLMBrokerSettings()
+    settings = LLMActorSettings()
     settings.LLM_NUM_ACTORS = 1
     settings.LLM_BATCH_SIZE = 1
     settings.LLM_BATCH_TIMEOUT = 0.01
 
     with patch.object(DummyLLMClient, "generate_async", blocking_mock):
         base_client = DummyLLMClient(settings=settings)
-        service = LLMBrokerService(base_client=base_client, settings=settings)
+        service = LLMActorService(base_client=base_client, settings=settings)
         await service.start()
         try:
             tasks: list[asyncio.Task[str]] = [
@@ -109,7 +109,7 @@ async def test_low_priority_tasks_complete_despite_high_priority_flood(service) 
 @pytest.mark.asyncio
 async def test_ac5b_item_not_lost_when_get_and_stop_simultaneous() -> None:
     """AC 5b: если get_fut и stop_fut оба в done — элемент не теряется."""
-    settings = LLMBrokerSettings()
+    settings = LLMActorSettings()
     queue: asyncio.PriorityQueue[Any] = asyncio.PriorityQueue()
     msg = ActorMessage(request=LLMRequest(prompt="simultaneous"))
     item = _PrioritizedMessage(priority=10, sequence=0, message=msg)

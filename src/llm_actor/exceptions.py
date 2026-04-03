@@ -7,11 +7,11 @@ if TYPE_CHECKING:
     from llm_actor.core.messages import ActorMessage
 
 
-class LLMBrokerError(Exception):
+class LLMActorError(Exception):
     """Базовое исключение для всех ошибок пакета llm_actor."""
 
 
-class LLMServiceError(LLMBrokerError):
+class LLMServiceError(LLMActorError):
     """Базовое исключение для ошибок LLM сервиса."""
 
     def __init__(self, message: str, status_code: int = HTTPStatus.INTERNAL_SERVER_ERROR):
@@ -70,25 +70,25 @@ class LLMServiceTimeoutError(LLMServiceError):
         )
 
 
-class CircuitBreakerOpenError(LLMBrokerError):
+class CircuitBreakerOpenError(LLMActorError):
     """Raised when circuit breaker is open"""
 
     pass
 
 
-class OverloadError(LLMBrokerError):
+class OverloadError(LLMActorError):
     """Raised when actor mailbox is full"""
 
     pass
 
 
-class PoolShuttingDownError(LLMBrokerError):
+class PoolShuttingDownError(LLMActorError):
     """Raised when pool is shutting down"""
 
     pass
 
 
-class ActorFailedError(LLMBrokerError):
+class ActorFailedError(LLMActorError):
     """Raised when actor exceeded failure threshold and must be restarted."""
 
     def __init__(
@@ -102,7 +102,7 @@ class ActorFailedError(LLMBrokerError):
         super().__init__(message)
 
 
-class ToolExecutionError(LLMBrokerError):
+class ToolExecutionError(LLMActorError):
     def __init__(self, tool_name: str, cause: Exception) -> None:
         self.tool_name = tool_name
         self.cause = cause
@@ -115,7 +115,7 @@ class ToolExecutionTimeoutError(ToolExecutionError):
         super().__init__(tool_name, TimeoutError(f"exceeded {timeout}s timeout"))
 
 
-class ToolLoopMaxIterationsError(LLMBrokerError):
+class ToolLoopMaxIterationsError(LLMActorError):
     def __init__(self, max_iterations: int) -> None:
         self.max_iterations = max_iterations
         super().__init__(f"Tool loop exceeded maximum iterations ({max_iterations})")

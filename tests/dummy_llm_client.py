@@ -7,7 +7,7 @@ from llm_actor.exceptions import (
     LLMServiceHTTPError,
     LLMServiceOverloadedError,
 )
-from llm_actor.settings import LLMBrokerSettings
+from llm_actor.settings import LLMActorSettings
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 class DummyLLMClient:
     """stub LLM клиент для тестирования, имитирующий поведение реального LLM-клиента."""
 
-    def __init__(self, settings: LLMBrokerSettings) -> None:
+    def __init__(self, settings: LLMActorSettings) -> None:
         self.call_count = 0
 
         self.base_latency = getattr(settings, "DUMMY_BASE_LATENCY", 0.05)

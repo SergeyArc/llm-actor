@@ -11,8 +11,8 @@ from llm_actor.exceptions import (
     LLMServiceTimeoutError,
     LLMServiceUnavailableError,
 )
-from llm_actor.logger import BrokerLogger
-from llm_actor.settings import LLMBrokerSettings
+from llm_actor.logger import ActorLogger
+from llm_actor.settings import LLMActorSettings
 
 
 def _is_transient_error(exc: Exception) -> bool:
@@ -45,7 +45,7 @@ class LLMClientWithRetry:
     def __init__(
         self,
         base_client: LLMClientWithCircuitBreakerInterface,
-        settings: LLMBrokerSettings,
+        settings: LLMActorSettings,
     ) -> None:
         if settings.LLM_RETRY_MAX_ATTEMPTS < 1:
             raise ValueError(
@@ -55,7 +55,7 @@ class LLMClientWithRetry:
         self._max_attempts = settings.LLM_RETRY_MAX_ATTEMPTS
         self._base_backoff = settings.LLM_RETRY_BASE_BACKOFF
         self._backoff_cap = settings.LLM_RETRY_BACKOFF_CAP
-        self._logger = BrokerLogger.get_logger(name="llm_client_retry")
+        self._logger = ActorLogger.get_logger(name="llm_client_retry")
 
     async def generate(
         self, request: LLMRequest, response_model: type[Any] | None = None

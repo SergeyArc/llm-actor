@@ -6,7 +6,7 @@ pytest.importorskip("anthropic")
 
 from anthropic import APIStatusError, APITimeoutError, RateLimitError
 
-from llm_actor import LLMBrokerService
+from llm_actor import LLMActorService
 from llm_actor.client.adapters.anthropic import AnthropicAdapter
 from llm_actor.core.request import LLMRequest
 from llm_actor.exceptions import (
@@ -170,6 +170,6 @@ async def test_from_anthropic_factory_builds_service() -> None:
     with patch(
         "llm_actor.client.adapters.anthropic.AnthropicAdapter", return_value=mock_base
     ) as ctor_mock:
-        svc = LLMBrokerService.from_anthropic(api_key="k", model="claude-3-5-sonnet-20241022")
+        svc = LLMActorService.from_anthropic(api_key="k", model="claude-3-5-sonnet-20241022")
     ctor_mock.assert_called_once_with(api_key="k", model="claude-3-5-sonnet-20241022")
     assert svc._base_client is mock_base

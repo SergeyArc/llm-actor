@@ -2,16 +2,16 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from llm_actor import LLMBrokerService, LLMBrokerSettings
+from llm_actor import LLMActorService, LLMActorSettings
 from llm_actor.exceptions import PoolShuttingDownError
 from tests.dummy_llm_client import DummyLLMClient
 
 
 async def test_service_lifecycle(mock_llm_response):
     """Тест полного жизненного цикла сервиса с graceful shutdown."""
-    settings = LLMBrokerSettings()
+    settings = LLMActorSettings()
     base_client = DummyLLMClient(settings=settings)
-    service = LLMBrokerService(base_client=base_client, settings=settings)
+    service = LLMActorService(base_client=base_client, settings=settings)
     await service.start()
 
     prompts = ["test1", "test2", "test3"]
@@ -35,9 +35,9 @@ async def test_service_lifecycle(mock_llm_response):
 
 async def test_ask_after_stop_raises_error(mock_llm_response):
     """Тест вызова ask после stop должен вызывать PoolShuttingDownError."""
-    settings = LLMBrokerSettings()
+    settings = LLMActorSettings()
     base_client = DummyLLMClient(settings=settings)
-    service = LLMBrokerService(base_client=base_client, settings=settings)
+    service = LLMActorService(base_client=base_client, settings=settings)
     await service.start()
     await service.stop()
 
@@ -47,11 +47,11 @@ async def test_ask_after_stop_raises_error(mock_llm_response):
 
 async def test_service_calls_client_close(mock_llm_response):
     """Проверяет, что при остановке сервиса вызывается close() у базового клиента."""
-    settings = LLMBrokerSettings()
+    settings = LLMActorSettings()
     base_client = DummyLLMClient(settings=settings)
     base_client.close = AsyncMock()
 
-    service = LLMBrokerService(base_client=base_client, settings=settings)
+    service = LLMActorService(base_client=base_client, settings=settings)
     await service.start()
     await service.stop()
 
@@ -60,11 +60,11 @@ async def test_service_calls_client_close(mock_llm_response):
 
 async def test_service_handles_client_close_error(mock_llm_response):
     """Проверяет, что ошибка при закрытии клиента не прерывает остановку брокера."""
-    settings = LLMBrokerSettings()
+    settings = LLMActorSettings()
     base_client = DummyLLMClient(settings=settings)
     base_client.close = AsyncMock(side_effect=RuntimeError("Close failed"))
 
-    service = LLMBrokerService(base_client=base_client, settings=settings)
+    service = LLMActorService(base_client=base_client, settings=settings)
     await service.start()
     await service.stop()
 

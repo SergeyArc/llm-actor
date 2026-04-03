@@ -1,6 +1,6 @@
 from llm_actor import (
     CircuitBreaker,
-    LLMBrokerSettings,
+    LLMActorSettings,
     LLMClientInterface,
     LLMClientWithCircuitBreakerInterface,
 )
@@ -11,7 +11,7 @@ from tests.dummy_llm_client import DummyLLMClient
 
 async def test_llm_client_interface_compliance():
     """Тест проверки соответствия клиентов интерфейсам."""
-    settings = LLMBrokerSettings()
+    settings = LLMActorSettings()
     dummy_client = DummyLLMClient(settings=settings)
     circuit_breaker = CircuitBreaker(settings=settings, metrics=None)
     wrapped_client = LLMClientWithCircuitBreaker(dummy_client, circuit_breaker)

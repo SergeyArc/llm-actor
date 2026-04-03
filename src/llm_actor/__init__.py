@@ -13,7 +13,7 @@ from llm_actor.core.tools import LLMResponse, Tool, ToolCall, ToolResult
 from llm_actor.exceptions import (
     ActorFailedError,
     CircuitBreakerOpenError,
-    LLMBrokerError,
+    LLMActorError,
     LLMServiceError,
     LLMServiceGeneralError,
     LLMServiceHTTPError,
@@ -26,28 +26,28 @@ from llm_actor.exceptions import (
     ToolExecutionTimeoutError,
     ToolLoopMaxIterationsError,
 )
-from llm_actor.logger import BrokerLogger
+from llm_actor.logger import ActorLogger
 from llm_actor.metrics import (
     MetricsCollector,
     default_metrics_collector,
     is_prometheus_metrics_available,
 )
 from llm_actor.resilience.circuit_breaker import CircuitBreaker
-from llm_actor.service import LLMBrokerService
-from llm_actor.settings import LLMBrokerSettings
+from llm_actor.service import LLMActorService
+from llm_actor.settings import LLMActorSettings
 
 __all__ = [
     "ActorMessage",
     "LLMRequest",
     "LLMResponse",
     "ActorFailedError",
-    "BrokerLogger",
+    "ActorLogger",
     "CircuitBreaker",
     "CircuitBreakerOpenError",
     "HealthStatus",
-    "LLMBrokerError",
-    "LLMBrokerService",
-    "LLMBrokerSettings",
+    "LLMActorError",
+    "LLMActorService",
+    "LLMActorSettings",
     "LLMClientInterface",
     "LLMClientWithCircuitBreaker",
     "build_json_prompt",

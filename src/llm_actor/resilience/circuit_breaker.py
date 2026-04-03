@@ -5,9 +5,9 @@ from enum import StrEnum
 from typing import Any
 
 from llm_actor.exceptions import CircuitBreakerOpenError
-from llm_actor.logger import BrokerLogger
+from llm_actor.logger import ActorLogger
 from llm_actor.metrics import MetricsCollector
-from llm_actor.settings import LLMBrokerSettings
+from llm_actor.settings import LLMActorSettings
 
 
 class CircuitBreakerState(StrEnum):
@@ -21,7 +21,7 @@ class CircuitBreaker:
 
     def __init__(
         self,
-        settings: LLMBrokerSettings,
+        settings: LLMActorSettings,
         metrics: MetricsCollector | None = None,
     ) -> None:
         self._failure_threshold = settings.LLM_FAILURE_THRESHOLD
@@ -31,7 +31,7 @@ class CircuitBreaker:
         self._last_failure_time: float | None = None
         self._state = CircuitBreakerState.CLOSED
         self._lock = asyncio.Lock()
-        self._logger = BrokerLogger.get_logger(name="circuit_breaker")
+        self._logger = ActorLogger.get_logger(name="circuit_breaker")
 
     async def call(self, func: Callable[..., Awaitable[Any]], *args: Any, **kwargs: Any) -> Any:
         async with self._lock:

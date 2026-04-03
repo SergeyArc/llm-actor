@@ -15,19 +15,19 @@ from llm_actor.exceptions import (
     ToolExecutionTimeoutError,
     ToolLoopMaxIterationsError,
 )
-from llm_actor.logger import BrokerLogger
-from llm_actor.settings import LLMBrokerSettings
+from llm_actor.logger import ActorLogger
+from llm_actor.settings import LLMActorSettings
 
 
 class ToolCallOrchestratorClient:
     def __init__(
         self,
         cb_client: LLMClientWithCircuitBreakerInterface,
-        settings: LLMBrokerSettings,
+        settings: LLMActorSettings,
     ) -> None:
         self._cb_client = cb_client
         self._settings = settings
-        self._logger = BrokerLogger.get_logger(name="tool_loop")
+        self._logger = ActorLogger.get_logger(name="tool_loop")
 
     async def generate(self, request: LLMRequest, response_model: type[Any] | None = None) -> Any:
         if request.tools:

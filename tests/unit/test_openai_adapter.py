@@ -6,7 +6,7 @@ pytest.importorskip("openai")
 
 from openai import RateLimitError
 
-from llm_actor import LLMBrokerService
+from llm_actor import LLMActorService
 from llm_actor.client.adapters.openai import OpenAIAdapter
 from llm_actor.client.adapters.openai_compatible import OpenAICompatibleAdapter
 from llm_actor.core.request import LLMRequest
@@ -143,7 +143,7 @@ async def test_from_openai_factory_builds_service() -> None:
     with patch(
         "llm_actor.client.adapters.openai.OpenAIAdapter", return_value=mock_base
     ) as ctor_mock:
-        svc = LLMBrokerService.from_openai(api_key="k", model="m", extra_opt=1)
+        svc = LLMActorService.from_openai(api_key="k", model="m", extra_opt=1)
     ctor_mock.assert_called_once_with(api_key="k", model="m", extra_opt=1)
     assert svc._base_client is mock_base
 
@@ -165,7 +165,7 @@ async def test_from_openai_compatible_factory_builds_service() -> None:
         "llm_actor.client.adapters.openai_compatible.OpenAICompatibleAdapter",
         return_value=mock_base,
     ) as ctor_mock:
-        svc = LLMBrokerService.from_openai_compatible(
+        svc = LLMActorService.from_openai_compatible(
             api_key="k", model="m", base_url="http://localhost:11434/v1"
         )
     ctor_mock.assert_called_once_with(api_key="k", model="m", base_url="http://localhost:11434/v1")

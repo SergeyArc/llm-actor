@@ -11,7 +11,7 @@ class LLMClientInterface(Protocol):
 
     ВАЖНО: Внешние клиенты НЕ должны реализовывать retry логику самостоятельно.
     Retry механизм с exponential backoff обеспечивается брокером на уровне
-    LLMBrokerService через LLMClientWithRetry.
+    LLMActorService через LLMClientWithRetry.
 
     Реализации должны просто выбрасывать соответствующие исключения при ошибках:
     - LLMServiceOverloadedError (429) - при перегрузке API

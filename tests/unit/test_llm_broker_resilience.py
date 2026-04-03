@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 import pytest
 
-from llm_actor import LLMBrokerService, LLMBrokerSettings
+from llm_actor import LLMActorService, LLMActorSettings
 from llm_actor.core.request import LLMRequest
 from llm_actor.exceptions import (
     CircuitBreakerOpenError,
@@ -31,7 +31,7 @@ async def test_circuit_breaker_opens_after_threshold(service, mock_llm_response)
 
 async def test_overload_error_when_queue_full():
     """Тест перегрузки при заполнении очереди актора."""
-    settings = LLMBrokerSettings()
+    settings = LLMActorSettings()
     settings.LLM_MAX_QUEUE_SIZE = 10
     settings.LLM_NUM_ACTORS = 1
     settings.LLM_BATCH_SIZE = 1
@@ -43,7 +43,7 @@ async def test_overload_error_when_queue_full():
 
     with patch.object(DummyLLMClient, "generate_async", slow_generate_async):
         base_client = DummyLLMClient(settings=settings)
-        service = LLMBrokerService(base_client=base_client, settings=settings)
+        service = LLMActorService(base_client=base_client, settings=settings)
         await service.start()
 
         try:
@@ -61,7 +61,7 @@ async def test_overload_error_when_queue_full():
 
 async def test_retry_before_circuit_breaker():
     """Тест что retry логика работает перед circuit breaker для transient ошибок."""
-    settings = LLMBrokerSettings()
+    settings = LLMActorSettings()
     settings.LLM_RETRY_MAX_ATTEMPTS = 3
     settings.LLM_RETRY_BASE_BACKOFF = 0.01
     settings.LLM_FAILURE_THRESHOLD = 10
@@ -84,7 +84,7 @@ async def test_retry_before_circuit_breaker():
         ],
     )
 
-    service = LLMBrokerService(base_client=base_client, settings=settings)
+    service = LLMActorService(base_client=base_client, settings=settings)
     await service.start()
 
     try:

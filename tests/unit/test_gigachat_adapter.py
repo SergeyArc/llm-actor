@@ -65,7 +65,7 @@ async def test_gigachat_adapter_maps_errors():
 @pytest.mark.asyncio
 async def test_from_gigachat_factory():
     with patch("llm_actor.client.adapters.gigachat.GigaChatAdapter") as mock_adapter:
-        from llm_actor import LLMBrokerService
-        svc = LLMBrokerService.from_gigachat(credentials="abc", model="pro")
+        from llm_actor import LLMActorService
+        svc = LLMActorService.from_gigachat(credentials="abc", model="pro")
         assert svc is not None
         mock_adapter.assert_called_once()

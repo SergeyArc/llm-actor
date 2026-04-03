@@ -12,8 +12,8 @@ from llm_actor.exceptions import (
     ToolExecutionTimeoutError,
     ToolLoopMaxIterationsError,
 )
-from llm_actor.service import LLMBrokerService
-from llm_actor.settings import LLMBrokerSettings
+from llm_actor.service import LLMActorService
+from llm_actor.settings import LLMActorSettings
 
 
 class _FakeToolCapableClient:
@@ -27,7 +27,7 @@ class _FakeToolCapableClient:
 async def test_tool_loop_single_iteration() -> None:
     cb = _FakeToolCapableClient()
     cb.generate_with_tools_async.return_value = LLMResponse(content="Result", tool_calls=[])
-    orchestrator = ToolCallOrchestratorClient(cb, LLMBrokerSettings())  # type: ignore[arg-type]
+    orchestrator = ToolCallOrchestratorClient(cb, LLMActorSettings())  # type: ignore[arg-type]
     req = LLMRequest(prompt="hi", tools=[Tool(func=lambda: 1, name="x")])
     out = await orchestrator.generate(req)
     assert out == "Result"
@@ -50,7 +50,7 @@ async def test_tool_loop_with_tool_execution() -> None:
     ]
     cb.format_tool_results.return_value = [{"role": "tool", "content": "Sunny"}]
 
-    orchestrator = ToolCallOrchestratorClient(cb, LLMBrokerSettings())  # type: ignore[arg-type]
+    orchestrator = ToolCallOrchestratorClient(cb, LLMActorSettings())  # type: ignore[arg-type]
     req = LLMRequest(prompt="w", tools=[Tool(func=get_weather)])
     out = await orchestrator.generate(req)
     assert out == "Weather: Sunny"
@@ -77,7 +77,7 @@ async def test_tool_loop_sync_tool() -> None:
         "llm_actor.client.tool_loop.asyncio.to_thread", new_callable=AsyncMock
     ) as mock_to_thread:
         mock_to_thread.return_value = 5
-        orchestrator = ToolCallOrchestratorClient(cb, LLMBrokerSettings())  # type: ignore[arg-type]
+        orchestrator = ToolCallOrchestratorClient(cb, LLMActorSettings())  # type: ignore[arg-type]
         req = LLMRequest(prompt="q", tools=[Tool(func=sync_add)])
         out = await orchestrator.generate(req)
     assert out == "5"
@@ -97,7 +97,7 @@ async def test_tool_loop_tool_timeout() -> None:
         assistant_message={"role": "assistant", "content": None, "tool_calls": []},
     )
 
-    orchestrator = ToolCallOrchestratorClient(cb, LLMBrokerSettings())  # type: ignore[arg-type]
+    orchestrator = ToolCallOrchestratorClient(cb, LLMActorSettings())  # type: ignore[arg-type]
     req = LLMRequest(prompt="q", tools=[Tool(func=slow_tool)], tool_timeout=0.01)
     with pytest.raises(ToolExecutionTimeoutError):
         await orchestrator.generate(req)
@@ -113,7 +113,7 @@ async def test_tool_loop_max_iterations() -> None:
     )
     cb.format_tool_results.return_value = []
 
-    settings = LLMBrokerSettings(LLM_TOOL_MAX_ITERATIONS=3)
+    settings = LLMActorSettings(LLM_TOOL_MAX_ITERATIONS=3)
     orchestrator = ToolCallOrchestratorClient(cb, settings)  # type: ignore[arg-type]
 
     async def dummy() -> str:
@@ -142,7 +142,7 @@ async def test_tool_loop_unknown_tool() -> None:
     ]
     cb.format_tool_results.return_value = []
 
-    orchestrator = ToolCallOrchestratorClient(cb, LLMBrokerSettings())  # type: ignore[arg-type]
+    orchestrator = ToolCallOrchestratorClient(cb, LLMActorSettings())  # type: ignore[arg-type]
     req = LLMRequest(prompt="q", tools=[Tool(func=known_fn)])
     out = await orchestrator.generate(req)
     assert out == "done"
@@ -168,7 +168,7 @@ def test_tool_lambda_requires_explicit_name() -> None:
 
 @pytest.mark.asyncio
 async def test_service_generate_with_tool_end_to_end() -> None:
-    """AC1: LLMBrokerService.generate() with tools executes the full client stack."""
+    """AC1: LLMActorService.generate() with tools executes the full client stack."""
     tool_called = False
 
     async def my_tool() -> str:
@@ -196,7 +196,7 @@ async def test_service_generate_with_tool_end_to_end() -> None:
             return "plain"
 
     base_client = _ToolCapableBase()
-    service = LLMBrokerService(base_client=base_client, settings=LLMBrokerSettings())  # type: ignore[arg-type]
+    service = LLMActorService(base_client=base_client, settings=LLMActorSettings())  # type: ignore[arg-type]
     await service.start()
     try:
         req = LLMRequest(prompt="q", tools=[Tool(func=my_tool)])
@@ -225,7 +225,7 @@ async def test_generate_with_tools_raises_if_response_model_set() -> None:
     class _M:
         pass
 
-    orchestrator = ToolCallOrchestratorClient(cb, LLMBrokerSettings())  # type: ignore[arg-type]
+    orchestrator = ToolCallOrchestratorClient(cb, LLMActorSettings())  # type: ignore[arg-type]
     req = LLMRequest(prompt="q", tools=[Tool(func=lambda: 1, name="t")])
     with pytest.raises(ValueError, match="Combining tools with response_model is not supported"):
         await orchestrator.generate(req, response_model=_M)
@@ -239,7 +239,7 @@ async def test_generate_with_tools_raises_if_client_not_tool_capable() -> None:
         ) -> str:
             return "x"
 
-    orchestrator = ToolCallOrchestratorClient(_Bare(), LLMBrokerSettings())  # type: ignore[arg-type]
+    orchestrator = ToolCallOrchestratorClient(_Bare(), LLMActorSettings())  # type: ignore[arg-type]
     req = LLMRequest(prompt="q", tools=[Tool(func=lambda: 1, name="t")])
     with pytest.raises(
         LLMServiceGeneralError, match="does not implement ToolCapableClientInterface"
@@ -268,7 +268,7 @@ async def test_tool_loop_async_tool_not_to_thread() -> None:
     cb.format_tool_results.return_value = []
 
     with patch("llm_actor.client.tool_loop.asyncio.to_thread") as mock_to_thread:
-        orchestrator = ToolCallOrchestratorClient(cb, LLMBrokerSettings())  # type: ignore[arg-type]
+        orchestrator = ToolCallOrchestratorClient(cb, LLMActorSettings())  # type: ignore[arg-type]
         req = LLMRequest(prompt="q", tools=[Tool(func=async_tool)])
         await orchestrator.generate(req)
     assert called is True

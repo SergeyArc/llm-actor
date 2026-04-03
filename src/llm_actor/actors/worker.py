@@ -7,9 +7,9 @@ from llm_actor import tracing as otel_tracing
 from llm_actor.client.interface import LLMClientWithCircuitBreakerInterface
 from llm_actor.core.messages import ActorMessage
 from llm_actor.exceptions import ActorFailedError, CircuitBreakerOpenError
-from llm_actor.logger import BrokerLogger
+from llm_actor.logger import ActorLogger
 from llm_actor.metrics import MetricsCollector
-from llm_actor.settings import LLMBrokerSettings
+from llm_actor.settings import LLMActorSettings
 
 # Таймаут периодического пробуждения в idle-режиме для проверки _running.
 _IDLE_POLL_TIMEOUT = 1.0
@@ -24,7 +24,7 @@ class ModelActor:
         self,
         client: LLMClientWithCircuitBreakerInterface,
         actor_id: str,
-        settings: LLMBrokerSettings,
+        settings: LLMActorSettings,
         shared_queue: asyncio.PriorityQueue[Any],
         metrics: MetricsCollector | None = None,
         pool_id: str = "default",
@@ -45,7 +45,7 @@ class ModelActor:
         self._task: asyncio.Task[None] | None = None
         self._running = False
         self._consecutive_failures = 0
-        self._logger = BrokerLogger.bind_context(actor_id=self._actor_id)
+        self._logger = ActorLogger.bind_context(actor_id=self._actor_id)
 
     @property
     def actor_id(self) -> str:
@@ -137,9 +137,13 @@ class ModelActor:
         try:
             while True:
                 if not self._running:
-                    self._logger.warning(
-                        f"Stopped due to consecutive failures ({self._consecutive_failures}/{self._max_consecutive_failures})"
-                    )
+                    if self._stop_event.is_set():
+                        self._logger.debug("Exiting main loop (shutdown)")
+                    else:
+                        self._logger.warning(
+                            "Main loop stopped while running flag cleared "
+                            f"({self._consecutive_failures}/{self._max_consecutive_failures} failures)"
+                        )
                     break
 
                 now = time.time()

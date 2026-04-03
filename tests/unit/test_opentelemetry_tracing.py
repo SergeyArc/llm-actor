@@ -14,8 +14,8 @@ from opentelemetry.sdk.trace.export import (
 )
 from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 
-from llm_actor import LLMBrokerService
-from llm_actor.settings import LLMBrokerSettings
+from llm_actor import LLMActorService
+from llm_actor.settings import LLMActorSettings
 from tests.dummy_llm_client import DummyLLMClient
 from tests.models import User
 
@@ -72,13 +72,13 @@ def _span_by_name(exporter: _CapturingSpanExporter, name: str) -> ReadableSpan |
 
 
 @pytest.mark.asyncio
-async def test_generate_creates_broker_pool_actor_and_llm_spans(
+async def test_generate_creates_root_pool_actor_and_llm_spans(
     mock_llm_response: dict[str, str],
     otel_memory_exporter: _CapturingSpanExporter,
 ) -> None:
-    settings = LLMBrokerSettings()
+    settings = LLMActorSettings()
     base_client = DummyLLMClient(settings=settings)
-    service = LLMBrokerService(base_client=base_client, settings=settings)
+    service = LLMActorService(base_client=base_client, settings=settings)
     await service.start()
     try:
         prompt = "trace-me"
@@ -88,20 +88,20 @@ async def test_generate_creates_broker_pool_actor_and_llm_spans(
         await service.stop()
 
     spans = {s.name: s for s in otel_memory_exporter.spans}
-    assert "llm_broker.generate" in spans
+    assert "llm_actor.generate" in spans
     assert "llm_pool.wait" in spans
     assert "llm_actor.actor_process" in spans
     assert "llm_actor.llm_request" in spans
 
-    broker = spans["llm_broker.generate"]
+    generate_root = spans["llm_actor.generate"]
     wait = spans["llm_pool.wait"]
     actor = spans["llm_actor.actor_process"]
     llm_req = spans["llm_actor.llm_request"]
 
     assert wait.parent is not None
-    assert wait.parent.span_id == broker.context.span_id
+    assert wait.parent.span_id == generate_root.context.span_id
     assert actor.parent is not None
-    assert actor.parent.span_id == broker.context.span_id
+    assert actor.parent.span_id == generate_root.context.span_id
     assert llm_req.parent is not None
     assert llm_req.parent.span_id == actor.context.span_id
 
@@ -111,9 +111,9 @@ async def test_structured_response_emits_validate_span(
     mock_llm_response: dict[str, str],
     otel_memory_exporter: _CapturingSpanExporter,
 ) -> None:
-    settings = LLMBrokerSettings()
+    settings = LLMActorSettings()
     base_client = DummyLLMClient(settings=settings)
-    service = LLMBrokerService(base_client=base_client, settings=settings)
+    service = LLMActorService(base_client=base_client, settings=settings)
     await service.start()
     try:
         prompt = "structured"
@@ -138,20 +138,20 @@ async def test_queue_wait_span_finished_with_valid_times(
     mock_llm_response: dict[str, str],
     otel_memory_exporter: _CapturingSpanExporter,
 ) -> None:
-    settings = LLMBrokerSettings()
+    settings = LLMActorSettings()
     base_client = DummyLLMClient(settings=settings)
-    service = LLMBrokerService(base_client=base_client, settings=settings)
+    service = LLMActorService(base_client=base_client, settings=settings)
     await service.start()
     try:
         mock_llm_response["qwait"] = "ok"
         await service.generate("qwait")
 
         wait = _span_by_name(otel_memory_exporter, "llm_pool.wait")
-        broker = _span_by_name(otel_memory_exporter, "llm_broker.generate")
+        generate_root = _span_by_name(otel_memory_exporter, "llm_actor.generate")
         assert wait is not None
-        assert broker is not None
+        assert generate_root is not None
         assert wait.parent is not None
-        assert wait.parent.span_id == broker.context.span_id
+        assert wait.parent.span_id == generate_root.context.span_id
         assert wait.end_time is not None and wait.start_time is not None
         assert wait.end_time >= wait.start_time
     finally:
@@ -169,9 +169,9 @@ async def test_queue_wait_span_captures_actual_queue_time(
     Второй запрос вынужден ждать в очереди пока первый обрабатывается.
     Проверяем, что оба wait-спана завершены и имеют корректную длительность.
     """
-    settings = LLMBrokerSettings(LLM_NUM_ACTORS=1, LLM_BATCH_SIZE=1, LLM_BATCH_TIMEOUT=0.05)
+    settings = LLMActorSettings(LLM_NUM_ACTORS=1, LLM_BATCH_SIZE=1, LLM_BATCH_TIMEOUT=0.05)
     base_client = DummyLLMClient(settings=settings)
-    service = LLMBrokerService(base_client=base_client, settings=settings)
+    service = LLMActorService(base_client=base_client, settings=settings)
     await service.start()
     try:
         mock_llm_response["qdelay1"] = "r1"
@@ -198,9 +198,9 @@ async def test_library_works_without_configured_tracer_provider(
     _trace_module._TRACER_PROVIDER_SET_ONCE._done = False  # type: ignore[attr-defined]
     _trace_module._TRACER_PROVIDER = None  # type: ignore[attr-defined]
     try:
-        settings = LLMBrokerSettings()
+        settings = LLMActorSettings()
         base_client = DummyLLMClient(settings=settings)
-        service = LLMBrokerService(base_client=base_client, settings=settings)
+        service = LLMActorService(base_client=base_client, settings=settings)
         await service.start()
         try:
             mock_llm_response["no-sdk"] = "ok"

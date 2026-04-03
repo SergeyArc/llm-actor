@@ -2,7 +2,7 @@ from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class LLMBrokerSettings(BaseSettings):
+class LLMActorSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="", case_sensitive=True, extra="ignore")
 
     LLM_FAILURE_THRESHOLD: int = 5
