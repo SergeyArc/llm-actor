@@ -155,6 +155,18 @@ class LLMActorService:
                 self._logger.error("Error while closing LLM client: {}", exc, exc_info=True)
         self._logger.info("LLMActorService stopped successfully")
 
+    async def __aenter__(self) -> "LLMActorService":
+        await self.start()
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: Any,
+    ) -> None:
+        await self.stop()
+
     @overload
     async def generate(
         self,

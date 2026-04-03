@@ -1,105 +1,151 @@
-# LLM Actor
+# 🎭 LLM Actor: Industrial-Grade LLM Throughput for Python
 
-*Russian documentation: [docs/README.ru.md](docs/README.ru.md)*
+<p align="center">
+  <img src="docs/assets/logo.png" width="400" alt="LLM Actor Logo">
+</p>
 
-A standalone Python package for efficient Large Language Model (LLM) request handling. It delivers high throughput via an actor pool, resilience via a circuit breaker and retries, and a built-in tool-calling loop.
+<p align="center">
+  <a href="https://pypi.org/project/llm-actor/"><img src="https://img.shields.io/pypi/v/llm-actor.svg" alt="PyPI version"></a>
+  <a href="https://github.com/your-username/llm-actor/actions/workflows/test.yml"><img src="https://github.com/your-username/llm-actor/actions/workflows/test.yml/badge.svg" alt="Tests status"></a>
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
+  <a href="https://www.python.org/downloads/release/python-3130/"><img src="https://img.shields.io/badge/python-3.13-blue.svg" alt="Python 3.13"></a>
+</p>
 
-## Features
+<p align="center">
+  <i>🌐 Documentation: <b>English</b> | <a href="docs/README.ru.md">Russian</a></i>
+</p>
 
-- **Multi-Provider Support**: Native integration with OpenAI, Anthropic, and Sber GigaChat *(experimental; see below)*.
-- **Self-Hosted LLM Ready**: Full support for vLLM, Ollama, and other OpenAI/Anthropic-compatible proxies. Works with open-weight models (Llama, Qwen, GigaChat-Max).
-- **Parallel Tool Execution**: Multiple tools can run concurrently, cutting end-to-end latency in complex flows.
-- **Actor-Inspired Design**: A single **priority queue** plus a pool of worker actors supervised for automatic recovery.
-- **Priority Management**: Task priority levels so UI traffic can preempt background work.
-- **Resilience**:
-    - **Circuit Breaker**: Limits cascading provider failures with fail-fast under overload.
-    - **Transport Retry**: Automatic retries on transient HTTP errors (502, 503, 504, 429) with exponential backoff.
-    - **Semantic Retry**: Regenerates when the LLM response fails Pydantic validation.
-- **Observability**: OpenTelemetry tracing and structured logging with context (`actor_id`, `trace_id`).
-- **Structured Output**: Pydantic V2 integration for strictly typed responses.
+**LLM Actor** is a high-performance orchestration layer designed to handle Large Language Model (LLM) requests at scale. Inspired by the **Actor Model**, it solves the "last mile" of production LLM integration: handling concurrency, ensuring resilience, and managing task priority without overhead.
 
-## Requirements
+---
 
-- **Python**: 3.13
-- **Core dependencies**: Pydantic V2, loguru, OpenTelemetry API.
+## 🚀 Why LLM Actor?
 
-## Installation
+Most developers start with simple API calls. But when you move to production, you quickly hit:
+- **Rate Limit Exhaustion**: No global coordination for token usage.
+- **Provider Outages**: One slow response can hang your entire app.
+- **Unreliable Parsing**: LLMs output garbage; your app crashes.
+- **Lack of Priority**: Background tasks block high-priority user UI requests.
+
+**LLM Actor** fixes this. It’s not just a wrapper; it’s a **resilient worker pool** built to sit between your application logic and your LLM providers.
+
+---
+
+## ✨ Key Features
+
+- **⚡ High Throughput Actor Pool**: Efficiently manage hundreds of concurrent requests using a dedicated worker pool.
+- **🧠 Intelligent Resilience**: 
+    - **Circuit Breaker**: Detects provider failures and "fails fast" to protect your infrastructure.
+    - **Exponential Backoff**: Automatic retries for transient HTTP errors (429, 502, 503).
+    - **Semantic Validation**: Typed response validation with Pydantic; auto-retry on schema mismatch.
+- **🛠️ Built-in Tool Calling Loop**: Native support for complex agentic flows. Run multiple tools **in parallel** to slash latency.
+- **⚖️ Global Priority Queue**: Assign priorities to tasks. Ensure user-facing interactions always jump to the front of the line.
+- **🧩 Multi-Provider & Self-Hosted**: 
+    - Native support: OpenAI, Anthropic, Sber GigaChat.
+    - Proxy support: **vLLM**, **Ollama**, and any OpenAI-compatible endpoint.
+- **🔭 Deep Observability**: Full **OpenTelemetry** integration. Trace every request from the queue through the actor to the final provider response.
+
+---
+
+## 📦 Installation
 
 ```bash
-# Core only
+# Install core package
 pip install llm-actor
 
-# With provider SDKs
-pip install "llm-actor[openai]"    # OpenAI SDK
-pip install "llm-actor[anthropic]" # Anthropic SDK
-pip install "llm-actor[gigachat]"  # Sber GigaChat SDK
+# Install with your preferred providers
+pip install "llm-actor[openai,anthropic]"
 
-# All providers + Prometheus metrics
-pip install "llm-actor[openai,anthropic,gigachat,metrics]"
+# Full installation (all providers + metrics)
+pip install "llm-actor[all]"
 ```
 
-## Quick start
+---
 
-### 1. Create a service
+## ⚡ Quick Start: 60 Seconds to Scale
 
-Use the built-in factories for common providers:
+Create a service and start processing tasks with priority and auto-recovery:
 
 ```python
-from llm_actor import LLMActorService, LLMActorSettings
+from llm_actor import LLMActorService, LLMActorSettings, Priority
+from pydantic import BaseModel
 
-settings = LLMActorSettings(
-    LLM_NUM_ACTORS=10,
-    LLM_RETRY_MAX_ATTEMPTS=3,
+# 1. Setup Service
+service = LLMActorService.from_openai(
+    api_key="sk-...", 
+    model="gpt-4o",
+    settings=LLMActorSettings(LLM_NUM_ACTORS=10) # 10 concurrent workers
 )
 
-# OpenAI / OpenAI-compatible (vLLM, Ollama)
-service = LLMActorService.from_openai(api_key="...", model="gpt-4o", settings=settings)
+# 2. Define Output Schema
+class UserProfile(BaseModel):
+    name: str
+    skills: list[str]
 
-# GigaChat (experimental)
-service = LLMActorService.from_gigachat(credentials="...", model="GigaChat-Max-V2")
+# 3. Use via Context Manager (handles Start/Stop automatically)
+async with service:
+    # 4. Queue a High-Priority Task
+    request = service.request(
+        "Extract profile from: Alex is a Senior Python Dev with LLM expertise.",
+        response_model=UserProfile,
+        priority=Priority.HIGH
+    )
+
+    # 5. Get Your Results (Blocking or Async)
+    result = request.get()
+    print(f"Found: {result.name} with skills: {result.skills}")
 ```
 
-## Development and testing
+---
 
-The library splits fast unit tests from heavier integration runs.
+## 📊 Provider Support Matrix
 
-### Environment
-
-Copy the example env and add your keys:
-
-```bash
-cp .env.example .env
-```
-
-### Running tests
-
-```bash
-uv sync --all-extras --group dev
-
-# 1. Unit tests (mocked, fast)
-pytest tests/unit
-
-# 2. Integration tests (real models; requires API keys in .env)
-pytest tests/integration --integration
-```
-
-Integration tests are skipped if `--integration` is not passed or if required API keys are missing.
-
-## Provider support
-
-| Provider | Basic generation | Tool calling | Tested |
+| Provider | Generations | Parallel Tools | Tested |
 |---|---|---|---|
-| OpenAI / compatible | ✅ | ✅ | ✅ Against real models |
-| Anthropic | ✅ | ✅ | ✅ Against real models |
-| Sber GigaChat | ✅ | ⚠️ | ❌ Not verified against the official provider |
+| **OpenAI / compatible** | ✅ | ✅ | ✅ Full |
+| **Anthropic** | ✅ | ✅ | ✅ Full |
+| **vLLM / Ollama** | ✅ | ✅* | ✅ Full |
+| **Sber GigaChat** | ✅ | ⚠️ | ⏳ Experimental |
 
-> [!WARNING]
-> **GigaChat support is experimental.** The adapter follows the GigaChat SDK docs but has not been fully validated against Sber’s official API (`gigachat.devices.sberdevices.ru`).
->
-> **vLLM proxy caveat:** Tool calling requires server flags `--enable-auto-tool-choice` and `--tool-call-parser`. That is an infrastructure constraint, not a library bug.
+*\*Tool calling in vLLM requires specific server-side flags.*
 
-## Design principles
+---
 
-- **Shared priority queue**: One queue for global prioritization.
-- **Failure isolation**: A crashed worker does not take down the pool.
-- **Backpressure**: Protects the provider from overload.
+## 🛡️ Built for Reliability
+
+| Mechanism | Description |
+|---|---|
+| **Actor Supervision** | If a worker process crashes, it's automatically restarted by the supervisor. |
+| **Backpressure** | Prevents system overload by limiting the number of active tasks. |
+| **Otel Tracing** | Visualize latency including "Queue Wait Time" vs "In-LLM Time". |
+
+---
+
+## 🤝 Contributing
+
+We love contributions! Whether it's adding a new provider adapter, fixing a bug, or improving documentation.
+
+1. Fork the repo.
+2. Install dev dependencies: `uv sync --all-extras --group dev`
+3. Run tests: `pytest tests/unit`
+4. Submit your PR!
+
+---
+
+## 📜 License
+
+Distributed under the **MIT License**. See `LICENSE` for more information.
+
+---
+
+## 📚 Examples & Advanced Usage
+
+Check out the [examples/](examples/) directory for complete, runnable scripts:
+
+1.  **[Basic Generation](examples/01_basic_generation.py)**: Quick start with any provider.
+2.  **[Structured Output](examples/02_structured_output.py)**: Extract data into Pydantic models.
+3.  **[Tool Calling](examples/03_tool_calling.py)**: Orchestrate complex agentic loops with parallel tool execution.
+
+---
+
+<p align="center">Built with 💙 for the AI Developer Community.</p>
