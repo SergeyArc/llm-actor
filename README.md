@@ -121,7 +121,7 @@ async with service:
 
 `LLM Actor` is built as an **In-Process Orchestrator**. Instead of complex pre-emptive traffic shaping, we use a **reactive chain**: `Exponential Backoff` (managed by the client) -> `Circuit Breaker` (managed by the pool). 
 
-This approach minimizes internal overhead and prevents GPU memory saturation by limiting the number of active connections (`LLM_NUM_ACTORS`) while ensuring high-priority requests are always processed first.
+This approach minimizes internal overhead and is ideal for self-hosted inference (like vLLM), where TPM quotas are absent and reactive 429 handling is sufficient. It prevents GPU memory saturation by limiting active connections (`LLM_NUM_ACTORS`) while ensuring high-priority requests are always processed first.
 
 ---
 
