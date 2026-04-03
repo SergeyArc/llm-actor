@@ -1,4 +1,4 @@
-# LLM Actor: Resilient Throughput, Structured Output & Tool Calling
+# LLM Actor: High-Performance Orchestration for Self-Hosted Inference
 
 <p align="center">
   <a href="https://pypi.org/project/llm-actor/"><img src="https://img.shields.io/pypi/v/llm-actor.svg" alt="PyPI version"></a>
@@ -11,28 +11,27 @@
   <i>Documentation: <b>English</b> | <a href="docs/README.ru.md">Russian</a></i>
 </p>
 
-**LLM Actor** is a high-performance orchestration layer designed to handle Large Language Model (LLM) requests at scale. Inspired by the **Actor Model**, it solves the "last mile" of production LLM integration: handling concurrency, ensuring resilience, and providing **guaranteed structured output** and **agentic tool calling** without the boilerplate.
+**LLM Actor** — это эффективный Actor Pool для **shared self-hosted inference** (vLLM, Ollama) или прокси-сервисов. Мы решаем задачу «последней мили»: управление конкурентными запросами, их приоритизация и гарантированный структурированный вывод без лишнего boilerplate.
 
 ---
 
 ## Why LLM Actor?
 
-Most developers start with simple API calls. But when you move to production, you quickly hit:
-- **Rate Limit Exhaustion**: No global coordination for token usage.
-- **Provider Outages**: One slow response can hang your entire app.
-- **Unreliable Parsing**: Hard to get **guaranteed Structured Output** from raw strings.
-- **Complex Agentic Flows**: Orchestrating **Tool Calling** (especially in parallel) is error-prone.
-- **Lack of Priority**: Background tasks block high-priority user UI requests.
+While cloud providers have their own rate limits, production self-hosted inference (or shared cloud endpoints) hits other bottlenecks:
+- **GPU Oversaturation**: Too many concurrent requests crash the inference engine.
+- **Queue Hoarding**: Background batch tasks block high-priority user UI requests.
+- **Unreliable Structuring**: Getting **guaranteed Structured Output** from local models is hard.
+- **Lack of Resilience**: One slow response shouldn't hang your entire orchestration layer.
 
-**LLM Actor** fixes this. It’s not just a wrapper; it’s a **resilient worker pool** built to sit between your application logic and your LLM providers.
+**LLM Actor** addresses these via **Global Concurrency Control** (actor pool) and a **Global Circuit Breaker**. It prioritizes **reactive resilience** over proactive token counting, making it a perfect fit for private cloud infrastructure.
 
 ---
 
 ## Key Features
 
 - **High Throughput Actor Pool**: Efficiently manage hundreds of concurrent requests using a dedicated worker pool.
-- **Intelligent Resilience**: 
-    - **Circuit Breaker**: Detects provider failures and "fails fast" to protect your infrastructure.
+- **Global Resilience**: 
+    - **Circuit Breaker**: Failure state is synchronized across all workers in the pool. If one worker detects a provider failure, the entire pool "fails fast" to protect your shared infrastructure.
     - **Exponential Backoff**: Automatic retries for transient HTTP errors (429, 502, 503).
     - **Semantic Validation**: Typed response validation with Pydantic; auto-retry on schema mismatch.
 - **Built-in Tool Calling Loop**: Native support for complex agentic flows. Run multiple tools **in parallel** to slash latency.
@@ -108,13 +107,13 @@ async with service:
 
 ---
 
-## Built for Reliability
+## Architecture & Limitations (The Honest Part)
 
-| Mechanism | Description |
-|---|---|
-| **Actor Supervision** | If a worker process crashes, it's automatically restarted by the supervisor. |
-| **Backpressure** | Prevents system overload by limiting the number of active tasks. |
-| **Otel Tracing** | Visualize latency including "Queue Wait Time" vs "In-LLM Time". |
+`LLM Actor` is built as an **In-Process Orchestrator**. To keep the library lightweight and universal, we made specific trade-offs:
+
+- **Reactive Resilience**: We don't counting tokens *before* sending them (No Token Bucket). Instead, we use a **reactive chain**: `Exponential Backoff` -> `Circuit Breaker`. If a provider returns a 429, the pool backs off or pauses, protecting your infrastructure without requiring heavy tokenizers.
+- **In-Memory State**: Circuit Breaker status and Queue state are local to the process. This is ideal for vertical scaling and single-node service instances, but not a replacement for distributed traffic shaping (like Redis-based Rate Limiters).
+- **GPU Protection**: High-throughput mode is specifically tuned for **vLLM** and **Ollama**, where limiting the number of concurrent connections (`LLM_NUM_ACTORS`) is the most effective way to prevent GPU memory saturation.
 
 ---
 
