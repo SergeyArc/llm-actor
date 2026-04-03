@@ -1,6 +1,6 @@
 # LLM Actor
 
-Изолированный Python-пакет для эффективного управления запросами к Large Language Models (LLM). Обеспечивает высокую производительность через пул акторов, надежность через Circuit Breaker и повторные попытки (Retry), а также опциональный мониторинг через Prometheus (`llm-actor[metrics]`).
+Изолированный Python-пакет для эффективного управления запросами к Large Language Models (LLM). Обеспечивает высокую производительность через пул акторов, надежность через Circuit Breaker и повторные попытки (Retry), а также встроенный цикл вызова инструментов (Tool Calling).
 
 ## Основные возможности
 
@@ -9,238 +9,172 @@
 - **Resilience (Отказоустойчивость)**:
     - **Circuit Breaker**: Защита от каскадных сбоев провайдера. Быстрый отказ (fail-fast) при перегрузке.
     - **Transport Retry**: Автоматические повторы при сетевых ошибках (502, 503, 504, 429) с экспоненциальной задержкой.
-    - **Semantic Retry**: Повторная генерация, если ответ LLM не прошел валидацию схемы (JSON Schema).
-- **Embedded Batching**: Прозрачная группировка запросов для эффективного использования Batch API провайдеров (скидки до 50% у ряда вендоров на апрель 2026).
-- **Structured Output**: Глубокая интеграция с Pydantic V2 для получения строго типизированных данных без оверхеда на сторонние фреймворки.
-- **LLMRequest и адаптеры**: Единый DTO запроса; готовые адаптеры OpenAI, OpenAI-compatible и Anthropic с маппингом ошибок провайдера в исключения брокера; фабрики `LLMBrokerService.from_*`.
-- **Monitoring**: Опциональный экспорт метрик Prometheus при установке extra `[metrics]` (latency, error rate, actor pool state).
-- **Логирование**: Единый loguru-based `BrokerLogger` с контекстом пула/актора/запроса и опциональной подстановкой `trace_id` из OpenTelemetry в каждую запись.
-- **Backpressure Control**: Управление конкурентностью для локальных моделей (vLLM, Ollama), предотвращающее перегрузку GPU.
+    - **Semantic Retry**: Повторная генерация, если ответ LLM не прошел валидацию схемы (Pydantic/JSON Schema).
+- **Tool Calling Orchestration**: Встроенный цикл «запрос -> вызов инструмента -> результат -> ответ», поддерживающий вложенные вызовы и параллельное выполнение инструментов.
+- **Parallel Batching**: Эффективная параллельная обработка пачек запросов через пул воркеров.
+- **Structured Output**: Глубокая интеграция с Pydantic V2 для получения строго типизированных данных.
+- **LLMRequest и адаптеры**: Единый DTO запроса (поддержка `messages`, `tools`, `system_prompt`); готовые адаптеры OpenAI, Anthropic и GigaChat.
+- **Monitoring**: Опциональный экспорт метрик Prometheus (`llm-actor[metrics]`).
+- **Tracing**: Интеграция с OpenTelemetry для глубокой трассировки жизненного цикла запроса.
 
 ## Требования
 
 - **Python**: 3.13
-- **Ключевые зависимости**: Pydantic V2, loguru, OpenTelemetry API (только для контекста трасс и поля `trace_id` в логах; экспорт спанов настраивает приложение-хост). Метрики Prometheus — через optional extra `[metrics]` (`prometheus-client`).
+- **Ключевые зависимости**: Pydantic V2, loguru, OpenTelemetry API.
 
 ## Установка
 
 ```bash
-# Базовая установка
+# Базовая установка (только ядро)
 pip install llm-actor
 
 # С поддержкой GigaChat
 pip install llm-actor[gigachat]
 
-# С поддержкой OpenAI (SDK для встроенного адаптера)
+# С поддержкой OpenAI
 pip install llm-actor[openai]
 
-# С метриками Prometheus (по умолчанию брокер работает без них)
+# С метриками Prometheus
 pip install llm-actor[metrics]
 
-# Несколько extras сразу (пример)
-pip install llm-actor[openai,metrics]
-
-# Адаптер Anthropic: отдельно ставится пакет anthropic (в pyproject нет extra [anthropic])
+# Адаптер Anthropic требует ручной установки пакета anthropic
 pip install anthropic
 ```
 
-Без extra `[metrics]` зависимость `prometheus-client` не ставится: брокер работает без экспорта метрик. Явный `MetricsCollector()` без установленного extra завершится `ImportError` с подсказкой установить `[metrics]`.
-
 ## Быстрый старт
 
-### 1. Запрос `LLMRequest` и клиент
+### 1. Создание сервиса
 
-Транспортный слой принимает `LLMRequest` (промпт, опционально `temperature`, `max_tokens`, `system_prompt`, `stop_sequences`, произвольные ключи провайдера в `extra`). Публичный метод `LLMBrokerService.generate` также принимает обычную строку — она оборачивается в `LLMRequest(prompt=...)`.
-
-Реализуйте `LLMClientInterface` или используйте встроенные адаптеры (опциональные зависимости `openai`, `anthropic`):
+Используйте удобные фабрики для популярных провайдеров:
 
 ```python
-from llm_actor import LLMClientInterface, LLMRequest
-import asyncio
+from llm_actor import LLMBrokerService, LLMBrokerSettings
 
-class MyLLMClient(LLMClientInterface):
-    async def generate_async(self, request: LLMRequest) -> str:
-        await asyncio.sleep(0.1)
-        return f"Echo: {request.prompt}"
-
-    async def close(self) -> None:
-        pass
-```
-
-Фабрики сервиса (маппинг ошибок провайдера в исключения брокера внутри адаптера):
-
-```python
-from llm_actor import LLMBrokerService
-
-# pip install llm-actor[openai]
-service = LLMBrokerService.from_openai(api_key="...", model="gpt-4o")
-# OpenAI-compatible base_url (vLLM, LM Studio, …)
-service = LLMBrokerService.from_openai_compatible(
-    api_key="...", model="...", base_url="http://localhost:11434/v1"
+settings = LLMBrokerSettings(
+    LLM_NUM_ACTORS=5,                # Количество параллельных воркеров
+    LLM_RETRY_MAX_ATTEMPTS=3         # Повторы при сетевых ошибках
 )
-# pip install anthropic
-service = LLMBrokerService.from_anthropic(api_key="...", model="claude-3-5-sonnet-20241022")
+
+# OpenAI
+service = LLMBrokerService.from_openai(api_key="...", model="gpt-4o", settings=settings)
+
+# Anthropic
+service = LLMBrokerService.from_anthropic(api_key="...", model="claude-3-5-sonnet-latest")
+
+# GigaChat (требуется [gigachat])
+service = LLMBrokerService.from_gigachat(credentials="...", model="GigaChat-Pro")
 ```
 
-### 2. Запуск сервиса
+### 2. Генерация текста и объектов
 
 ```python
 import asyncio
 from pydantic import BaseModel
-from llm_actor import LLMBrokerService, LLMBrokerSettings, LLMRequest
 
-class MyResponse(BaseModel):
-    answer: str
-    confidence: float
+class UserInfo(BaseModel):
+    name: str
+    age: int
 
 async def main():
-    settings = LLMBrokerSettings(
-        LLM_MAX_CONCURRENT=5,
-        LLM_VALIDATION_RETRY_MAX_ATTEMPTS=3
-    )
-
-    # Клиент из п.1; либо: service = LLMBrokerService.from_openai(..., settings=settings)
-    base_client = MyLLMClient()
-    # Метрики: по умолчанию только при pip install llm-actor[metrics].
-    # Без extra коллектор не создаётся; свой: metrics=MetricsCollector() после установки [metrics].
-    service = LLMBrokerService(base_client=base_client, settings=settings)
-
     await service.start()
-    
     try:
-        text = await service.generate("Расскажи шутку про Python", priority=0)
-        print(f"Текст: {text}")
-
-        tuned = await service.generate(
-            LLMRequest(
-                prompt="Коротко: что такое asyncio?",
-                temperature=0.2,
-                system_prompt="Отвечай по-русски.",
-            )
-        )
-        print(tuned)
-
-        obj = await service.generate(
-            "Извлеки данные: уверенность 0.9, ответ 'Привет'",
-            response_model=MyResponse,
-            priority=5,
-        )
-        print(f"Объект: {obj.answer} ({obj.confidence})")
+        # Простой текст
+        answer = await service.generate("Кто такой Python?")
         
+        # Структурированный вывод
+        user = await service.generate(
+            "Ивлеки: Иван, 25 лет", 
+            response_model=UserInfo,
+            priority=0 # Высокий приоритет
+        )
+        print(f"{user.name}, {user.age}")
     finally:
         await service.stop()
 
-if __name__ == "__main__":
-    asyncio.run(main())
+asyncio.run(main())
 ```
 
 ## Продвинутое использование
 
-### Пакетная обработка (Batching)
+### Вызов инструментов (Tool Calling)
 
-Сервис поддерживает эффективную параллельную обработку пачки запросов:
+Брокер берет на себя цикл выполнения инструментов. Вам достаточно передать функции:
 
 ```python
-from llm_actor import LLMRequest
+def get_weather(city: str) -> str:
+    return f"В {city} солнечно, +25°C"
 
-# MyResponse — ваша Pydantic-модель (как в примере выше)
-requests = [
-    ("Промпт 1", None),
-    (LLMRequest(prompt="Промпт 2", temperature=0.5), MyResponse),
-    ("Промпт 3", None),
-]
-results = await service.generate_batch(requests, priority=20)
+async def get_stock_price(ticker: str) -> float:
+    return 150.5
+
+# В запросе
+result = await service.generate(
+    "Какая погода в Москве и сколько стоят акции AAPL?",
+    tools=[get_weather, get_stock_price]
+)
 ```
 
-### Мониторинг
+Брокер сам вызовет функции (включая асинхронные), передаст результаты обратно в LLM и вернет финальный текстовый ответ.
 
-Prometheus — **опционально** (`prometheus-client` только в extra `[metrics]`).
+### Пакетная обработка (Batching)
 
-При `pip install llm-actor[metrics]` по умолчанию `LLMBrokerService` создаёт `MetricsCollector`. Без extra внутренний `metrics` остаётся `None` (нет накладных расходов и зависимости). Свой коллектор передайте в `LLMBrokerService(..., metrics=...)`, либо используйте `default_metrics_collector()` и `is_prometheus_metrics_available()` из пакета.
+Параллельное выполнение множества запросов через пул акторов:
 
-Список метрик ниже актуален **только** при установленном `[metrics]` и созданном `MetricsCollector`:
+```python
+requests = [
+    ("Промпт 1", None),
+    (LLMRequest(prompt="Промпт 2", temperature=0.7), UserInfo),
+]
+# Все запросы выполняются параллельно в рамках лимитов пула
+results = await service.generate_batch(requests, priority=50)
+```
 
-Пакет собирает следующие ключевые метрики Prometheus:
-- `llm_actor_inbox_size`: текущий размер общей очереди задач (shared priority queue).
-- `llm_batch_processing_duration_seconds`: гистограмма времени обработки батча (по акторам).
-- `llm_batches_processed_total`: общее количество успешно обработанных батчей.
-- `llm_batches_failed_total`: количество батчей, завершившихся ошибкой.
-- `llm_circuit_breaker_trips_total`: счетчик срабатываний Circuit Breaker.
-- `llm_actor_restarts_total`: счетчик перезапусков акторов супервизором.
+> [!NOTE] 
+> `generate_batch` использует параллельное выполнение онлайн-запросов. Это ускоряет обработку, но отличается от "Batch API" (оффлайн-обработки со скидками), так как требует активного соединения.
 
 ### Логирование
 
-Пакет пишет диагностические сообщения через **`BrokerLogger`** ([`llm_actor.logger`](src/llm_actor/logger.py)) — обёртку над **loguru** с общим форматом и патчером записей.
+Пакет использует **loguru** через обёртку `BrokerLogger`. По умолчанию пакет работает в «бережном» режиме: он только обогащает записи логов метаданными (тегами акторов, пулов и трассировки), не меняя ваши настройки вывода (sinks).
 
-**Поведение**
+**Интеграция с вашим приложением**:
 
-- При первом обращении к `BrokerLogger` (например, из `LLMBrokerService`) выполняется однократная настройка: снимаются все текущие sink’и loguru и добавляется один вывод в **stderr** с цветным форматом, уровнем по умолчанию `INFO` и полями `backtrace` / `diagnose` для ошибок.
-- Уровень до первого лога можно задать явно: `BrokerLogger.configure(level="DEBUG")` (повторный вызов не меняет уже сконфигурированный логгер).
+1.  **По умолчанию**: Брокер просто пишет в ваш существующий конфиг loguru. Чтобы увидеть теги брокера, добавьте в ваш формат строки следующие поля: `{extra[trace_tag]}{extra[actor_tag]}{extra[pool_tag]}`.
+2.  **Фирменный стиль**: Если вы хотите использовать предустановленный цветной формат вывода `llm-actor`, вызовите метод настройки в точке входа вашего приложения:
 
-**Контекст в строке лога**
+```python
+from llm_actor import BrokerLogger
 
-Патчер заполняет служебные поля `extra`, которые попадают в шаблон сообщения:
+# ОСТОРОЖНО: Это удалит все текущие sink'и loguru и настроит вывод в stderr
+BrokerLogger.setup_standard_logging(level="DEBUG")
+```
 
-| Поле (extra) | Смысл |
+**Доступные поля в `extra`**:
+
+| Поле | Смысл |
 | :--- | :--- |
-| `trace_tag` | Если установлен **OpenTelemetry** `TracerProvider` и у текущего контекста есть валидный span — префикс вида `[trace=<32 hex символа>] `; иначе пустая строка. Позволяет сопоставлять логи со спанами в Jaeger/Tempo и т.п. |
-| `actor_tag` | Префикс `[<actor_id>] `, если логгер создан через `BrokerLogger.bind_context(actor_id=...)`. |
-| `pool_tag` | Префикс `[pool <первые 8 символов pool_id>] ` при переданном `pool_id`. |
+| `trace_tag` | Префикс вида `[trace=<id>] `, если активен OpenTelemetry context. |
+| `actor_tag` | Префикс `[actor-id] `, если лог идет из конкретного воркера. |
+| `pool_tag` | Префикс `[pool-id] ` для идентификации пула. |
 
-Внутри пула и акторов используется `BrokerLogger.bind_context(pool_id=..., actor_id=..., request_id=...)`: в формат вывода напрямую попадают только теги пула и актора; `request_id` остаётся в `extra` и доступен для расширения собственных sink’ов или фильтров.
+### Мониторинг (Prometheus)
 
-**Интеграция с вашим приложением**
-
-- Если вы уже настраиваете loguru глобально, имейте в виду: первый вызов `BrokerLogger` **заменит** список sink’ов на конфигурацию пакета. Чтобы избежать неожиданного порядка импортов, вызовите `BrokerLogger.configure(level=...)` в точке входа приложения до остальных компонентов `llm_actor` либо настройте свой sink после старта сервиса, если нужен кастомный вывод.
-- Корреляция лог↔трассы работает там, где при обработке запроса активен OTEL-контекст (как у брокера после настройки провайдера на стороне хоста).
-
-## Сравнение с аналогами (2026)
-
-| Возможность | llm-actor | LiteLLM | Instructor | LangChain |
-| :--- | :---: | :---: | :---: | :---: |
-| **Режим работы** | Embedded (библиотека) | Proxy / SDK | SDK wrapper | Framework |
-| **Worker Pool** | ✅ Встроенный | ❌ | ❌ | ❌ |
-| **Авто-батчинг** | ✅ Из коробки | ❌ | ❌ | ⚠️ Частично |
-| **Circuit Breaker** | ✅ Интегрирован | ✅ (только в прокси) | ❌ | ❌ |
-| **Validation Retry**| ✅ Семантический | ❌ | ✅ | ❌ |
-| **Prometheus-метрики** | ✅ Опционально (`[metrics]`) | ⚠️ В прокси | ❌ | ⚠️ Частично |
+При установке `llm-actor[metrics]` доступны метрики:
+- `llm_actor_inbox_size`: размер очереди.
+- `llm_batch_processing_duration_seconds`: время обработки.
+- `llm_circuit_breaker_trips_total`: срабатывания защиты.
+- `llm_actor_restarts_total`: перезапуски упавших акторов.
 
 ## Философия дизайна
 
-`llm-actor` — это **Actor-inspired concurrent worker pool**, прагматичная адаптация идей Erlang/Elixir для мира Python AsyncIO.
-
-- **Shared Priority Queue**: Все задачи попадают в единую очередь с приоритетами. Это гарантирует, что высокоприоритетные задачи обрабатываются в первую очередь, а нагрузка распределяется между акторами максимально равномерно (pull model).
-- **Изоляция сбоев**: Падение одного воркера при обработке сложного промпта не аффектит весь пул. Супервизор (`SupervisedActorPool`) автоматически перезапустит воркера и вернет его в строй.
-- **Backpressure**: Пакет выступает защитным буфером между вашим приложением и LLM. Вместо бесконечного создания задач, вызывающих `MemoryError`, брокер удерживает нагрузку в пределах заданного пула.
-- **Лёгкое ядро**: Без тяжёлых оркестраторов. Ядро опирается на `pydantic`, `loguru` и `opentelemetry-api` (без обязательного SDK/экспортёра в рантайме библиотеки — их подключает хост). `prometheus-client` подключается только с extra `[metrics]`.
-
-## Производительность (Benchmark)
-
-Использование встроенного батчинга позволяет достичь значительного ускорения на больших объемах данных за счет параллелизации и оптимального использования HTTP-соединений:
-
-- **100 запросов (Data Extraction)**:
-    - Последовательно: ~45 секунд
-    - `llm-actor` (pool=10): ~4.8 секунды (**ускорение в 9.3 раза**)
-
+- **Shared Priority Queue**: Единая очередь с приоритетами гарантирует честное распределение ресурсов.
+- **Изоляция сбоев**: Падение воркера не влияет на остальные. Супервизор автоматически восстанавливает пул.
+- **Backpressure**: Пакет защищает LLM и ваше приложение от перегрузки, удерживая нагрузку в рамках `LLM_NUM_ACTORS`.
 
 ## Разработка
 
-Для запуска тестов и линтеров:
-
 ```bash
-cd llm_actor
-uv sync --all-extras --group dev   # extras + dev (в dev входит prometheus-client для pytest/скриптов)
+uv sync --all-extras --group dev
 pytest
 ruff check .
 mypy src
 ```
-
-## Roadmap
-
-Ниже приведен план развития `llm-actor` на ближайшее время:
-
-1.  **Провайдеры "из коробки"**: Адаптеры OpenAI, OpenAI-compatible и Anthropic уже входят в пакет (см. `LLMBrokerService.from_*`). Дополнительные вендоры и унификация GigaChat/vLLM — по мере необходимости.
-2.  **OpenTelemetry**: В пакете уже есть спаны жизненного цикла (брокер, очередь, актор, LLM-запрос, валидация, tool calls) и проброс контекста; хост подключает SDK и экспортёры. Дальнейшее развитие — семантические конвенции, тонкая настройка атрибутов, опциональные переключатели «шумных» спанов.
-3.  **Cost & Token Tracking**: Встроенный подсчет токенов и примерной стоимости каждого запроса на основе актуальных тарифов провайдеров. Экспорт статистики через метрики Prometheus (при установленном extra `[metrics]`).
-4.  **Priority Queuing Improvements**: Динамическая переприоритизация задач в очереди на основе их "возраста" (предотвращение голодания низкоприоритетных задач).
-

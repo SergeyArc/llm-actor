@@ -42,25 +42,31 @@ class BrokerLogger:
     _configured = False
 
     @classmethod
-    def configure(
-        cls,
-        level: str = "INFO",
-    ) -> None:
+    def configure(cls) -> None:
         """
-        Убирает встроенный stderr-sink loguru (id 0) и добавляет единый формат для пакета.
-
-        Снимает все существующие sink'и loguru и добавляет один stderr-sink с единым форматом.
-        Иначе возможны дубли (дефолтный sink + наш и/или повторный add).
-
-        Args:
-            level: Уровень логирования (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+        Бережная конфигурация логгера: добавляет только патчер для контекстных тегов.
+        Не удаляет существующие sink'и и не добавляет новые.
         """
         if cls._configured:
             return
 
-        logger.remove()
-
+        # Добавляем патчер, который заполняет теги (actor_tag, trace_tag и т.д.)
+        # Это безопасно для существующих проектов: если в формате вывода этих полей нет,
+        # они просто сохраняются в extra-словаре записи.
         logger.configure(patcher=_broker_log_record_patcher)
+        cls._configured = True
+
+    @classmethod
+    def setup_standard_logging(cls, level: str = "INFO") -> None:
+        """
+        Явная настройка «красивого» вывода в консоль.
+        ОСТОРОЖНО: Удаляет все текущие обработчики (sinks) loguru!
+        
+        Используйте этот метод только в точке входа вашего приложения, 
+        если хотите стиль вывода как в llm-actor.
+        """
+        logger.remove()
+        cls.configure()
 
         console_format = (
             "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | "
@@ -78,8 +84,6 @@ class BrokerLogger:
             backtrace=True,
             diagnose=True,
         )
-
-        cls._configured = True
 
     @classmethod
     def get_logger(cls, name: str | None = None) -> Any:
@@ -120,7 +124,7 @@ class BrokerLogger:
         if not cls._configured:
             cls.configure()
 
-        context = {}
+        context: dict[str, Any] = {}
         if pool_id:
             context["pool_id"] = pool_id
         if actor_id:
