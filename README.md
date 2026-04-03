@@ -29,17 +29,27 @@ While cloud providers have their own rate limits, production self-hosted inferen
 
 ## Key Features
 
-- **High Throughput Actor Pool**: Efficiently manage hundreds of concurrent requests using a dedicated worker pool.
+- **Configurable Actor Pool**: Efficiently queue and dispatch requests across a pool of managed workers.
 - **Global Resilience**: 
-    - **Circuit Breaker**: Failure state is synchronized across all workers in the pool. If one worker detects a provider failure, the entire pool "fails fast" to protect your shared infrastructure.
+    - **Circuit Breaker**: Failure state is shared within the process. If one worker detects a provider failure, all workers in the pool "fail fast" immediately to protect your infrastructure.
     - **Exponential Backoff**: Automatic retries for transient HTTP errors (429, 502, 503).
     - **Semantic Validation**: Typed response validation with Pydantic; auto-retry on schema mismatch.
 - **Built-in Tool Calling Loop**: Native support for complex agentic flows. Run multiple tools **in parallel** to slash latency.
 - **Global Priority Queue**: Assign priorities to tasks. Ensure user-facing interactions always jump to the front of the line.
-- **Multi-Provider & Self-Hosted**: 
-    - Native support: OpenAI, Anthropic, Sber GigaChat.
+- **Multi-Provider Support**: 
+    - Native adapters: OpenAI, Anthropic, Sber GigaChat.
     - Proxy support: **vLLM**, **Ollama**, and any OpenAI-compatible endpoint.
 - **Deep Observability**: Full **OpenTelemetry** integration. Trace every request from the queue through the actor to the final provider response.
+
+---
+
+## Limitations
+
+To keep `LLM Actor` lightweight and universal, we made specific architectural trade-offs:
+
+- **In-process state**: Circuit Breaker status and Queue state are local to the process. Designed for single-node deployment or vertical scaling.
+- **No proactive token rate limiting**: We don't counting tokens *before* sending them. Ideal for self-hosted inference (vLLM/Ollama) where TPM quotas aren't the primary bottleneck. For external APIs with strict TPM limits, we rely on **Reactive Resilience** (Backoff + CB).
+- **Single-provider per pool**: A pool is tied to a single client instance. For multi-provider routing with independent circuit breaking, use separate `LLMActorService` instances.
 
 ---
 
@@ -107,13 +117,11 @@ async with service:
 
 ---
 
-## Architecture & Limitations (The Honest Part)
+## Architecture: Reactive Resilience
 
-`LLM Actor` is built as an **In-Process Orchestrator**. To keep the library lightweight and universal, we made specific trade-offs:
+`LLM Actor` is built as an **In-Process Orchestrator**. Instead of complex pre-emptive traffic shaping, we use a **reactive chain**: `Exponential Backoff` (managed by the client) -> `Circuit Breaker` (managed by the pool). 
 
-- **Reactive Resilience**: We don't counting tokens *before* sending them (No Token Bucket). Instead, we use a **reactive chain**: `Exponential Backoff` -> `Circuit Breaker`. If a provider returns a 429, the pool backs off or pauses, protecting your infrastructure without requiring heavy tokenizers.
-- **In-Memory State**: Circuit Breaker status and Queue state are local to the process. This is ideal for vertical scaling and single-node service instances, but not a replacement for distributed traffic shaping (like Redis-based Rate Limiters).
-- **GPU Protection**: High-throughput mode is specifically tuned for **vLLM** and **Ollama**, where limiting the number of concurrent connections (`LLM_NUM_ACTORS`) is the most effective way to prevent GPU memory saturation.
+This approach minimizes internal overhead and prevents GPU memory saturation by limiting the number of active connections (`LLM_NUM_ACTORS`) while ensuring high-priority requests are always processed first.
 
 ---
 
