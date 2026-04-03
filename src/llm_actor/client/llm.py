@@ -5,6 +5,8 @@ from typing import Any, TypeVar, cast, overload
 
 from pydantic import ValidationError
 
+from opentelemetry.trace import StatusCode
+
 from llm_actor import tracing as otel_tracing
 from llm_actor.client.interface import LLMClientInterface, ToolCapableClientInterface
 from llm_actor.core.request import LLMRequest
@@ -106,13 +108,16 @@ class LLMClientWithCircuitBreaker:
         with tracer.start_as_current_span(
             "llm_actor.llm_request",
             attributes={"llm_actor.prompt_preview": preview},
-        ):
-            response_str = await self._circuit_breaker.call(
-                self._client.generate_async, request
-            )
-            if response_str is None:
-                raise ValueError("Received None response from client")
-            return cast(str, response_str)
+        ) as span:
+            try:
+                response_str = await self._circuit_breaker.call(self._client.generate_async, request)
+                if response_str is None:
+                    raise ValueError("Received None response from client")
+                return cast(str, response_str)
+            except Exception as exc:
+                span.record_exception(exc)
+                span.set_status(StatusCode.ERROR, str(exc))
+                raise
 
     def _validate_response_model_output(self, response_str: str, response_model: type[Any]) -> Any:
         tracer = otel_tracing.get_tracer()
@@ -125,17 +130,22 @@ class LLMClientWithCircuitBreaker:
                     response_model, "__name__", str(response_model)
                 ),
             },
-        ):
-            cleaned_response = _extract_json_from_response(response_str)
-            parsed_data = json.loads(cleaned_response)
-            if hasattr(response_model, "model_validate"):
-                return response_model.model_validate(parsed_data)
-            if not isinstance(parsed_data, dict):
-                raise TypeError(
-                    f"Expected JSON object for {response_model.__name__}, "
-                    f"got {type(parsed_data).__name__}"
-                )
-            return response_model(**parsed_data)
+        ) as span:
+            try:
+                cleaned_response = _extract_json_from_response(response_str)
+                parsed_data = json.loads(cleaned_response)
+                if hasattr(response_model, "model_validate"):
+                    return response_model.model_validate(parsed_data)
+                if not isinstance(parsed_data, dict):
+                    raise TypeError(
+                        f"Expected JSON object for {response_model.__name__}, "
+                        f"got {type(parsed_data).__name__}"
+                    )
+                return response_model(**parsed_data)
+            except Exception as exc:
+                span.record_exception(exc)
+                span.set_status(StatusCode.ERROR, str(exc))
+                raise
 
     def _log_validation_retry(
         self,

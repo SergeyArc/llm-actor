@@ -214,18 +214,23 @@ class LLMBrokerService:
             - Exception: если произошла ошибка при обработке запроса
         """
         self._logger.info(f"Processing batch of {len(requests)} requests")
-        tasks = []
-        for item, response_model in requests:
-            req = _coerce_llm_request(item)
-            preview = req.prompt[:100] if req.prompt else ""
-            self._logger.info(f"Request: prompt={preview}..., response_model={response_model}")
-            tasks.append(self.generate(req, response_model, priority=priority))
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        error_count = sum(1 for r in results if isinstance(r, Exception))
-        if error_count > 0:
-            self._logger.warning(
-                f"Batch completed with {error_count} errors out of {len(requests)} requests"
-            )
-        else:
-            self._logger.info(f"Batch completed successfully: {len(requests)} requests")
-        return list(results)
+        tracer = otel_tracing.get_tracer()
+        with tracer.start_as_current_span(
+            "llm_broker.generate_batch",
+            attributes={"llm_actor.batch_size": len(requests)},
+        ):
+            tasks = []
+            for item, response_model in requests:
+                req = _coerce_llm_request(item)
+                preview = req.prompt[:100] if req.prompt else ""
+                self._logger.info(f"Request: prompt={preview}..., response_model={response_model}")
+                tasks.append(self.generate(req, response_model, priority=priority))
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            error_count = sum(1 for r in results if isinstance(r, Exception))
+            if error_count > 0:
+                self._logger.warning(
+                    f"Batch completed with {error_count} errors out of {len(requests)} requests"
+                )
+            else:
+                self._logger.info(f"Batch completed successfully: {len(requests)} requests")
+            return list(results)
