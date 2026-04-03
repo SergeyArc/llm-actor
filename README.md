@@ -8,14 +8,14 @@
 </p>
 
 <p align="center">
-  <i>🌐 Documentation: <b>English</b> | <a href="docs/README.ru.md">Russian</a></i>
+  <i>Documentation: <b>English</b> | <a href="docs/README.ru.md">Russian</a></i>
 </p>
 
 **LLM Actor** is a high-performance orchestration layer designed to handle Large Language Model (LLM) requests at scale. Inspired by the **Actor Model**, it solves the "last mile" of production LLM integration: handling concurrency, ensuring resilience, and providing **guaranteed structured output** and **agentic tool calling** without the boilerplate.
 
 ---
 
-## 🚀 Why LLM Actor?
+## Why LLM Actor?
 
 Most developers start with simple API calls. But when you move to production, you quickly hit:
 - **Rate Limit Exhaustion**: No global coordination for token usage.
@@ -28,23 +28,23 @@ Most developers start with simple API calls. But when you move to production, yo
 
 ---
 
-## ✨ Key Features
+## Key Features
 
-- **⚡ High Throughput Actor Pool**: Efficiently manage hundreds of concurrent requests using a dedicated worker pool.
-- **🧠 Intelligent Resilience**: 
+- **High Throughput Actor Pool**: Efficiently manage hundreds of concurrent requests using a dedicated worker pool.
+- **Intelligent Resilience**: 
     - **Circuit Breaker**: Detects provider failures and "fails fast" to protect your infrastructure.
     - **Exponential Backoff**: Automatic retries for transient HTTP errors (429, 502, 503).
     - **Semantic Validation**: Typed response validation with Pydantic; auto-retry on schema mismatch.
-- **🛠️ Built-in Tool Calling Loop**: Native support for complex agentic flows. Run multiple tools **in parallel** to slash latency.
-- **⚖️ Global Priority Queue**: Assign priorities to tasks. Ensure user-facing interactions always jump to the front of the line.
-- **🧩 Multi-Provider & Self-Hosted**: 
+- **Built-in Tool Calling Loop**: Native support for complex agentic flows. Run multiple tools **in parallel** to slash latency.
+- **Global Priority Queue**: Assign priorities to tasks. Ensure user-facing interactions always jump to the front of the line.
+- **Multi-Provider & Self-Hosted**: 
     - Native support: OpenAI, Anthropic, Sber GigaChat.
     - Proxy support: **vLLM**, **Ollama**, and any OpenAI-compatible endpoint.
-- **🔭 Deep Observability**: Full **OpenTelemetry** integration. Trace every request from the queue through the actor to the final provider response.
+- **Deep Observability**: Full **OpenTelemetry** integration. Trace every request from the queue through the actor to the final provider response.
 
 ---
 
-## 📦 Installation
+## Installation
 
 ```bash
 # Install core package
@@ -59,7 +59,7 @@ pip install "llm-actor[all]"
 
 ---
 
-## ⚡ Quick Start: 60 Seconds to Scale
+## Quick Start: 60 Seconds to Scale
 
 Create a service and start processing tasks with priority and auto-recovery:
 
@@ -95,20 +95,20 @@ async with service:
 
 ---
 
-## 📊 Provider Support Matrix
+## Provider Support Matrix
 
 | Provider | Generations | Parallel Tools | Tested |
 |---|---|---|---|
-| **OpenAI / compatible** | ✅ | ✅ | ✅ Full |
-| **Anthropic** | ✅ | ✅ | ✅ Full |
-| **vLLM / Ollama** | ✅ | ✅* | ✅ Full |
-| **Sber GigaChat** | ✅ | ⚠️ | ⏳ Experimental |
+| **OpenAI / compatible** | Yes | Yes | Yes Full |
+| **Anthropic** | Yes | Yes | Yes Full |
+| **vLLM / Ollama** | Yes | Yes* | Yes Full |
+| **Sber GigaChat** | Yes | Warning | Experimental |
 
 *\*Tool calling in vLLM requires specific server-side flags.*
 
 ---
 
-## 🛡️ Built for Reliability
+## Built for Reliability
 
 | Mechanism | Description |
 |---|---|
@@ -118,7 +118,7 @@ async with service:
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
 We love contributions! Whether it's adding a new provider adapter, fixing a bug, or improving documentation.
 
@@ -129,13 +129,13 @@ We love contributions! Whether it's adding a new provider adapter, fixing a bug,
 
 ---
 
-## 📜 License
+## License
 
 Distributed under the **MIT License**. See `LICENSE` for more information.
 
 ---
 
-## 📚 Examples & Advanced Usage
+## Examples & Advanced Usage
 
 Check out the [examples/](examples/) directory for complete, runnable scripts:
 
@@ -145,4 +145,4 @@ Check out the [examples/](examples/) directory for complete, runnable scripts:
 
 ---
 
-<p align="center">Built with 💙 for the AI Developer Community.</p>
+<p align="center">Built for the AI Developer Community.</p>
