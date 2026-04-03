@@ -4,7 +4,7 @@
 
 ## Основные возможности
 
-- **Multi-Provider Support**: Нативная интеграция с OpenAI, Anthropic и Sber GigaChat.
+- **Multi-Provider Support**: Нативная интеграция с OpenAI, Anthropic и Sber GigaChat *(экспериментально, см. ниже)*.
 - **Self-Hosted LLM Ready**: Полная поддержка vLLM, Ollama и других OpenAI/Anthropic-совместимых прокси. Работает с open-weight моделями (Llama, Qwen, GigaChat-Max).
 - **Parallel Tool Execution**: Выполнение запросов к нескольким инструментам одновременно, что радикально снижает общую задержку (latency) при сложных сценариях.
 - **Actor-inspired Design**: Внутренняя архитектура на базе единой **Priority Queue** и пула воркеров (акторов) с супервизором для автоматического восстановления.
@@ -54,7 +54,7 @@ settings = LLMBrokerSettings(
 # OpenAI / OpenAI Compatible (vLLM, Ollama)
 service = LLMBrokerService.from_openai(api_key="...", model="gpt-4o", settings=settings)
 
-# GigaChat
+# GigaChat (экспериментально)
 service = LLMBrokerService.from_gigachat(credentials="...", model="GigaChat-Max-V2")
 ```
 
@@ -81,6 +81,19 @@ pytest tests/integration --integration
 ```
 
 Интеграционные тесты автоматически пропускаются, если не передан флаг `--integration` или если отсутствуют необходимые API-ключи.
+
+## Статус поддержки провайдеров
+
+| Провайдер | Базовая генерация | Tool Calling | Протестировано |
+|---|---|---|---|
+| OpenAI / Compatible | ✅ | ✅ | ✅ Проверено на реальных моделях |
+| Anthropic | ✅ | ✅ | ✅ Проверено на реальных моделях |
+| Sber GigaChat | ✅ | ⚠️ | ❌ Не тестировалось против официального провайдера |
+
+> [!WARNING]
+> **GigaChat — экспериментальная поддержка.** Адаптер реализован по документации GigaChat SDK, но не прошёл полного тестирования против официального API Сбера (`gigachat.devices.sberdevices.ru`).
+>
+> **Известные ограничения при использовании через vLLM-прокси:** Tool Calling не работает без флагов `--enable-auto-tool-choice` и `--tool-call-parser` на стороне сервера. Это ограничение инфраструктуры, а не библиотеки.
 
 ## Философия дизайна
 

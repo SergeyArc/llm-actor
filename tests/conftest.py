@@ -7,7 +7,7 @@ import pytest_asyncio
 from llm_actor import LLMBrokerService
 from llm_actor.core.request import LLMRequest
 from llm_actor.metrics import is_prometheus_metrics_available
-from tests.unit.dummy_llm_client import DummyLLMClient
+from tests.dummy_llm_client import DummyLLMClient
 
 
 @pytest.fixture(autouse=True)

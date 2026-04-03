@@ -103,7 +103,10 @@ class OpenAIAdapter:
         payload["model"] = self._model
         payload["messages"] = messages
         payload["tools"] = tools_schema
-        payload["tool_choice"] = "auto"
+        
+        # Только если пользователь не переопределил это в extra
+        if "tool_choice" not in payload:
+            payload["tool_choice"] = "auto"
         if request.temperature is not None:
             payload["temperature"] = request.temperature
         if request.max_tokens is not None:

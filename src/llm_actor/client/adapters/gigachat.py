@@ -76,7 +76,12 @@ class GigaChatAdapter(ToolCapableClientInterface):
         # Если есть история (из Tool Loop), используем ее
         if conversation:
             for m in conversation:
-                msgs.append(Messages(role=m["role"], content=m.get("content") or ""))
+                msgs.append(Messages(
+                    role=m["role"], 
+                    content=m.get("content") or "",
+                    name=m.get("name"),
+                    function_call=m.get("function_call")
+                ))
         elif request.messages:
             for m in request.messages:
                 msgs.append(Messages(role=m.get("role", MessagesRole.USER), content=m["content"]))
@@ -139,8 +144,7 @@ class GigaChatAdapter(ToolCapableClientInterface):
             msg = choice.message
 
             tool_calls = []
-            
-            # 1. Проверяем стандартный function_call от SDK
+
             if msg.function_call:
                 import json
                 fc = msg.function_call
@@ -152,30 +156,9 @@ class GigaChatAdapter(ToolCapableClientInterface):
                         arguments=args,
                     )
                 )
-            
-            # 2. Если пусто, пробуем распарсить <fuse> теги (специфика GigaChat-Max)
-            content = msg.content or ""
-            if not tool_calls and "<fuse>" in content:
-                import re
-                import json
-                # Ищем <fuse>name(args)</fuse> или <fuse>name</fuse>
-                matches = re.finditer(r"<fuse>(.*?)(?:\((.*?)\))?</fuse>", content)
-                for match in matches:
-                    name = match.group(1).strip()
-                    args_str = match.group(2).strip() if match.group(2) else ""
-                    try:
-                        args = json.loads(args_str) if args_str else {}
-                    except:
-                        args = {}
-                    
-                    tool_calls.append(ToolCall(
-                        id=f"fuse_{name}",
-                        name=name,
-                        arguments=args
-                    ))
 
             # Формируем assistant_message для истории
-            assistant_msg = {"role": "assistant", "content": msg.content}
+            assistant_msg: dict[str, Any] = {"role": "assistant", "content": msg.content}
             if msg.function_call:
                 assistant_msg["function_call"] = {
                     "name": msg.function_call.name,
