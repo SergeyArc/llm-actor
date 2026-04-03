@@ -223,7 +223,7 @@ class LLMBrokerService:
             for item, response_model in requests:
                 req = _coerce_llm_request(item)
                 preview = req.prompt[:100] if req.prompt else ""
-                self._logger.info(f"Request: prompt={preview}..., response_model={response_model}")
+                self._logger.debug(f"Request: prompt={preview}..., response_model={response_model}")
                 tasks.append(self.generate(req, response_model, priority=priority))
             results = await asyncio.gather(*tasks, return_exceptions=True)
             error_count = sum(1 for r in results if isinstance(r, Exception))

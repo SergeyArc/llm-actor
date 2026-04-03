@@ -1,5 +1,4 @@
 import asyncio
-import inspect
 from typing import Any, cast
 
 from opentelemetry.trace import StatusCode
@@ -82,11 +81,8 @@ class ToolCallOrchestratorClient:
         tool_map: dict[str, Tool],
         tool_timeout: float | None,
     ) -> list[ToolResult]:
-        results: list[ToolResult] = []
-        for call in tool_calls:
-            result = await self._execute_single(call, tool_map, tool_timeout)
-            results.append(result)
-        return results
+        tasks = [self._execute_single(call, tool_map, tool_timeout) for call in tool_calls]
+        return list(await asyncio.gather(*tasks))
 
     async def _execute_single(
         self,
@@ -118,7 +114,7 @@ class ToolCallOrchestratorClient:
             self._logger.debug(f"Executing tool '{call.name}' (timeout={effective_timeout}s)")
 
             try:
-                if inspect.iscoroutinefunction(tool.func):
+                if asyncio.iscoroutinefunction(tool.func):
                     coro = tool.func(**call.arguments)
                 else:
                     coro = asyncio.to_thread(tool.func, **call.arguments)

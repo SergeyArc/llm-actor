@@ -109,7 +109,9 @@ class LLMClientWithCircuitBreaker:
             attributes={"llm_actor.prompt_preview": preview},
         ) as span:
             try:
-                response_str = await self._circuit_breaker.call(self._client.generate_async, request)
+                response_str = await self._circuit_breaker.call(
+                    self._client.generate_async, request
+                )
                 if response_str is None:
                     raise ValueError("Received None response from client")
                 return cast(str, response_str)
@@ -146,13 +148,14 @@ class LLMClientWithCircuitBreaker:
                 span.set_status(StatusCode.ERROR, str(exc))
                 raise
 
-    def _log_validation_retry(
+    def _handle_validation_error(
         self,
         validation_attempt: int,
         response_model: type[Any],
         response_str: str,
-        error: Exception,
-    ) -> None:
+        error: json.JSONDecodeError | ValidationError | TypeError,
+    ) -> bool:
+        """Логирует попытку или финальный сбой. True — вызывающий код должен сделать bare raise."""
         is_last_attempt = validation_attempt >= self._max_validation_attempts
 
         if isinstance(error, json.JSONDecodeError):
@@ -161,12 +164,12 @@ class LLMClientWithCircuitBreaker:
                     f"JSON decode error after {self._max_validation_attempts} attempts: {error}, "
                     f"response preview: {response_str[:200]}"
                 )
-                raise error
+                return True
             self._logger.warning(
                 f"Validation retry {validation_attempt}/{self._max_validation_attempts} "
                 f"due to JSON decode error: {error}"
             )
-            return
+            return False
 
         if isinstance(error, ValidationError):
             if is_last_attempt:
@@ -175,12 +178,12 @@ class LLMClientWithCircuitBreaker:
                     f"for model {response_model.__name__}: {error}, "
                     f"response preview: {response_str[:200]}"
                 )
-                raise error
+                return True
             self._logger.warning(
                 f"Validation retry {validation_attempt}/{self._max_validation_attempts} "
                 f"for model {response_model.__name__}: {error}"
             )
-            return
+            return False
 
         if isinstance(error, TypeError):
             if is_last_attempt:
@@ -189,14 +192,14 @@ class LLMClientWithCircuitBreaker:
                     f"for model {response_model.__name__}: {error}, "
                     f"response preview: {response_str[:200]}"
                 )
-                raise error
+                return True
             self._logger.warning(
                 f"Validation retry {validation_attempt}/{self._max_validation_attempts} "
                 f"due to type error for model {response_model.__name__}: {error}"
             )
-            return
+            return False
 
-        raise error
+        return True
 
     @overload
     async def generate(self, request: LLMRequest, response_model: None = None) -> str: ...
@@ -222,12 +225,13 @@ class LLMClientWithCircuitBreaker:
                 )
                 return validated
             except (json.JSONDecodeError, ValidationError, TypeError) as error:
-                self._log_validation_retry(
+                if self._handle_validation_error(
                     validation_attempt=validation_attempt,
                     response_model=response_model,
                     response_str=response_str,
                     error=error,
-                )
+                ):
+                    raise
 
         raise RuntimeError("unreachable: validation loop exhausted without return or raise")
 

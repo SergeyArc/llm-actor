@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import time
 from typing import Any, Literal
 
@@ -61,6 +62,10 @@ class ModelActor:
         """True если актор запущен и его задача активна."""
         return self._running and self._task is not None and not self._task.done()
 
+    @property
+    def task(self) -> asyncio.Task[None] | None:
+        return self._task
+
     async def start(self) -> None:
         if not self._running:
             self._running = True
@@ -71,8 +76,13 @@ class ModelActor:
         self._running = False
         self._stop_event.set()
         if self._task and not self._task.done():
-            await self._task
-            self._logger.info("Actor stopped")
+            try:
+                await asyncio.wait_for(self._task, timeout=5.0)
+            except TimeoutError:
+                self._task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await self._task
+        self._logger.info("Actor stopped")
 
     async def _abort_pending_queue_get(self, get_fut: asyncio.Future[Any]) -> None:
         if get_fut.done():
@@ -215,8 +225,7 @@ class ModelActor:
                     f"Exceeded max consecutive failures ({self._max_consecutive_failures}), "
                     "raising ActorFailedError for supervisor restart."
                 )
-                failed_messages = [*batch, *self._pending]
-                self._pending.clear()
+                failed_messages = batch
                 raise ActorFailedError(
                     message=(
                         f"Actor {self._actor_id} failed after "
@@ -270,7 +279,9 @@ class ModelActor:
 
         for msg, result in zip(batch, results, strict=True):
             if msg.future and not msg.future.done():
-                if isinstance(result, BaseException):
+                if isinstance(result, asyncio.CancelledError):
+                    msg.future.cancel()
+                elif isinstance(result, BaseException):
                     msg.future.set_exception(result)
                 else:
                     msg.future.set_result(result)

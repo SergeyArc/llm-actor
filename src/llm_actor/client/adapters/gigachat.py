@@ -1,29 +1,43 @@
 from typing import Any, cast
 
+from llm_actor.client.interface import ToolCapableClientInterface
 from llm_actor.core.request import LLMRequest
+from llm_actor.core.tools import LLMResponse, Tool, ToolCall, ToolResult
 from llm_actor.exceptions import (
+    LLMServiceError,
     LLMServiceGeneralError,
     LLMServiceOverloadedError,
     LLMServiceUnavailableError,
 )
 
 
+def _gigachat_temperature(request: LLMRequest) -> float:
+    return 1.0 if request.temperature is None else request.temperature
+
+
 def _map_gigachat_exception(exc: Exception) -> Exception:
-    if "RateLimitError" in str(type(exc)):
-        return LLMServiceOverloadedError(str(exc) or "GigaChat: слишком много запросов")
-    if "AuthenticationError" in str(type(exc)):
-        return LLMServiceGeneralError(str(exc) or "GigaChat: ошибка авторизации")
-    if "GigaChatException" in str(type(exc)):
-        return LLMServiceUnavailableError(str(exc) or "GigaChat: ошибка сервиса")
+    try:
+        from gigachat.exceptions import (
+            AuthenticationError,
+            GigaChatException,
+            RateLimitError,
+        )
+
+        if isinstance(exc, RateLimitError):
+            return LLMServiceOverloadedError(str(exc) or "GigaChat: слишком много запросов")
+        if isinstance(exc, AuthenticationError):
+            return LLMServiceGeneralError(str(exc) or "GigaChat: ошибка авторизации")
+        if isinstance(exc, GigaChatException):
+            return LLMServiceUnavailableError(str(exc) or "GigaChat: ошибка сервиса")
+    except ImportError:
+        pass
     return exc
 
 
-class GigaChatAdapter:
+class GigaChatAdapter(ToolCapableClientInterface):
     """
     Адаптер для GigaChat SDK от Сбера.
-    Реализует LLMClientInterface для использования в llm_actor.
-
-    Требует установленного пакета gigachat.
+    Реализует LLMClientInterface и ToolCapableClientInterface.
     """
 
     def __init__(
@@ -35,16 +49,6 @@ class GigaChatAdapter:
         model: str | None = None,
         **kwargs: Any,
     ) -> None:
-        """
-        Инициализация адаптера GigaChat.
-
-        Args:
-            credentials: Ключ авторизации (или GIGACHAT_CREDENTIALS в окружении)
-            scope: Область доступа (GIGACHAT_API_PERS / GIGACHAT_API_CORP)
-            verify_ssl_certs: Проверка SSL сертификатов (установите False для отладки)
-            model: Название модели (например, GigaChat-Pro)
-            **kwargs: Дополнительные параметры для GigaChat SDK
-        """
         try:
             from gigachat import GigaChat
         except ImportError as err:
@@ -60,71 +64,137 @@ class GigaChatAdapter:
             **kwargs,
         )
 
-    def _build_payload(self, request: LLMRequest) -> dict[str, Any]:
-        messages: list[dict[str, Any]] = []
+    def _convert_messages(
+        self, request: LLMRequest, conversation: list[dict[str, Any]] | None = None
+    ) -> list[Any]:
+        from gigachat.models import Messages, MessagesRole
+
+        msgs = []
         if request.system_prompt:
-            messages.append({"role": "system", "content": request.system_prompt})
-        if request.messages:
-            messages.extend(request.messages)
+            msgs.append(Messages(role=MessagesRole.SYSTEM, content=request.system_prompt))
+
+        # Если есть история (из Tool Loop), используем ее
+        if conversation:
+            for m in conversation:
+                msgs.append(Messages(role=m["role"], content=m.get("content") or ""))
+        elif request.messages:
+            for m in request.messages:
+                msgs.append(Messages(role=m.get("role", MessagesRole.USER), content=m["content"]))
+
         if request.prompt:
-            messages.append({"role": "user", "content": request.prompt})
+            msgs.append(Messages(role=MessagesRole.USER, content=request.prompt))
 
-        payload: dict[str, Any] = {
-            "messages": messages,
-        }
-        if self._model:
-            payload["model"] = self._model
-        if request.temperature is not None:
-            payload["temperature"] = request.temperature
-        if request.max_tokens is not None:
-            payload["max_tokens"] = request.max_tokens
-
-        # Объединяем с дополнительными параметрами из request.extra
-        if request.extra:
-            payload.update(request.extra)
-
-        return payload
+        return msgs
 
     async def generate_async(self, request: LLMRequest) -> str:
         try:
-            from gigachat.models import Chat, Messages, MessagesRole
+            from gigachat.models import Chat
 
-            msgs = []
-            if request.system_prompt:
-                msgs.append(Messages(role=MessagesRole.SYSTEM, content=request.system_prompt))
-            if request.messages:
-                for m in request.messages:
-                    role = m.get("role", MessagesRole.USER)
-                    msgs.append(Messages(role=role, content=m["content"]))
-            if request.prompt:
-                msgs.append(Messages(role=MessagesRole.USER, content=request.prompt))
+            msgs = self._convert_messages(request)
 
             chat_obj = Chat(
                 messages=msgs,
                 model=self._model,
-                temperature=request.temperature or 1.0,
+                temperature=_gigachat_temperature(request),
                 max_tokens=request.max_tokens,
             )
-            
-            # Добавляем extra поля если они поддерживаются Chat
-            for k, v in request.extra.items():
-                if hasattr(chat_obj, k):
-                    setattr(chat_obj, k, v)
-
             response = await self._client.achat(chat_obj)
-            
-            if not response.choices:
-                raise LLMServiceGeneralError("GigaChat: пустой ответ (нет choices)")
-
-            content = response.choices[0].message.content
-            if content is None:
-                raise LLMServiceGeneralError("GigaChat: пустой контент в ответе")
-
-            return cast(str, content)
-
+            return cast(str, response.choices[0].message.content)
+        except LLMServiceError:
+            raise
         except Exception as exc:
             raise _map_gigachat_exception(exc) from exc
 
+    async def generate_with_tools_async(
+        self, request: LLMRequest, conversation: list[dict[str, Any]]
+    ) -> LLMResponse:
+        try:
+            from gigachat.models import Chat, Function
+
+            msgs = self._convert_messages(request, conversation)
+
+            functions = []
+            if request.tools:
+                for tool in cast(list[Tool], request.tools):
+                    # GigaChat ожидает схему параметров напрямую в словаре
+                    schema = tool.build_openai_schema()["function"]
+                    functions.append(
+                        Function(
+                            name=schema["name"],
+                            description=schema["description"],
+                            parameters=schema["parameters"],
+                        )
+                    )
+
+            chat_obj = Chat(
+                messages=msgs,
+                model=self._model,
+                temperature=_gigachat_temperature(request),
+                max_tokens=request.max_tokens,
+                functions=functions if functions else None,
+            )
+
+            response = await self._client.achat(chat_obj)
+            choice = response.choices[0]
+            msg = choice.message
+
+            tool_calls = []
+            
+            # 1. Проверяем стандартный function_call от SDK
+            if msg.function_call:
+                import json
+                fc = msg.function_call
+                args = json.loads(fc.arguments) if isinstance(fc.arguments, str) else fc.arguments
+                tool_calls.append(
+                    ToolCall(
+                        id=f"call_{fc.name}",
+                        name=fc.name,
+                        arguments=args,
+                    )
+                )
+            
+            # 2. Если пусто, пробуем распарсить <fuse> теги (специфика GigaChat-Max)
+            content = msg.content or ""
+            if not tool_calls and "<fuse>" in content:
+                import re
+                import json
+                # Ищем <fuse>name(args)</fuse> или <fuse>name</fuse>
+                matches = re.finditer(r"<fuse>(.*?)(?:\((.*?)\))?</fuse>", content)
+                for match in matches:
+                    name = match.group(1).strip()
+                    args_str = match.group(2).strip() if match.group(2) else ""
+                    try:
+                        args = json.loads(args_str) if args_str else {}
+                    except:
+                        args = {}
+                    
+                    tool_calls.append(ToolCall(
+                        id=f"fuse_{name}",
+                        name=name,
+                        arguments=args
+                    ))
+
+            # Формируем assistant_message для истории
+            assistant_msg = {"role": "assistant", "content": msg.content}
+            if msg.function_call:
+                assistant_msg["function_call"] = {
+                    "name": msg.function_call.name,
+                    "arguments": msg.function_call.arguments,
+                }
+
+            return LLMResponse(
+                content=msg.content,
+                tool_calls=tool_calls,
+                assistant_message=assistant_msg,
+            )
+        except LLMServiceError:
+            raise
+        except Exception as exc:
+            raise _map_gigachat_exception(exc) from exc
+
+    def format_tool_results(self, results: list[ToolResult]) -> list[dict[str, Any]]:
+        # GigaChat использует role="function" для результатов
+        return [{"role": "function", "name": r.name, "content": r.result} for r in results]
+
     async def close(self) -> None:
-        """Закрытие сессии клиента."""
         await self._client.aclose()

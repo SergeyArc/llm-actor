@@ -131,9 +131,11 @@ async def test_actor_raises_actor_failed_error_at_threshold():
         await shared_queue.put(_PrioritizedMessage(priority=msg.priority, sequence=0, message=msg))
 
         with pytest.raises(ActorFailedError):
-            await actor._task  # type: ignore[misc]
+            assert actor.task is not None
+            await actor.task
 
-    exc = actor._task.exception()  # type: ignore[union-attr]
+    assert actor.task is not None
+    exc = actor.task.exception()
     assert isinstance(exc, ActorFailedError)
     assert exc.actor_id == "test-actor"
     assert msg in exc.pending_messages

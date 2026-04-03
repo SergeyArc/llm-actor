@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import time
 from dataclasses import dataclass
 from typing import Any, TypeVar, overload
@@ -60,14 +61,12 @@ class SupervisedActorPool:
         client: LLMClientWithCircuitBreakerInterface,
         settings: LLMBrokerSettings,
         metrics: MetricsCollector | None = None,
-        restart_strategy: str = "one-for-one",
         pool_id: str | None = None,
     ) -> None:
         self._client: LLMClientWithCircuitBreakerInterface = client
         self._settings = settings
         self._metrics = metrics
         self._num_actors = settings.LLM_NUM_ACTORS
-        self._restart_strategy = restart_strategy
         self._max_restarts = settings.LLM_MAX_RESTARTS
         self._restart_window = settings.LLM_RESTART_WINDOW
         self._pool_id = pool_id or str(uuid4())
@@ -105,7 +104,7 @@ class SupervisedActorPool:
                 pool_id=self._pool_id,
             )
             await actor.start()
-            task = actor._task
+            task = actor.task
             if task is None:
                 raise RuntimeError(f"Actor {actor.actor_id} failed to start: task was not created")
             self._actors.append(actor)
@@ -227,13 +226,14 @@ class SupervisedActorPool:
         )
         await new_actor.start()
 
-        # P-12: проверяем, что задача действительно создана, прежде чем принять рестарт.
-        if new_actor._task is None:
-            log.error("Actor failed to start (no task created); aborting restart")
-            return
+        if new_actor.task is None:
+            await new_actor.stop()
+            raise RuntimeError(
+                f"Actor {new_actor.actor_id} failed to start: task was not created after start()"
+            )
 
         self._actors[actor_index] = new_actor
-        self._actor_tasks[actor_index] = new_actor._task
+        self._actor_tasks[actor_index] = new_actor.task
 
         # P-12: счётчик рестартов увеличиваем только после успеха.
         self._restart_counts[actor_index].append(time.time())
@@ -247,14 +247,22 @@ class SupervisedActorPool:
         log.info("Actor restarted successfully")
 
     async def _requeue_pending_messages(self, pending_messages: list[ActorMessage[Any]]) -> None:
+        tracer = otel_tracing.get_tracer()
         for message in pending_messages:
             # Сбрасываем otel_context: оригинальный broker-спан уже завершён, новый
             # wait-спан должен использовать текущий (супервизорский) контекст, а не
             # ссылаться на закрытый родительский спан.
             message.otel_context = None
             message.queue_wait_span_closer = None
+            parent_ctx = get_current()
+            wait_span = tracer.start_span(
+                "llm_pool.wait",
+                context=parent_ctx,
+                attributes={"llm_actor.priority": message.priority},
+            )
+            message.queue_wait_span_closer = wait_span.end
             try:
-                await self.send(message)
+                await self._put_in_queue(message)
             except Exception as exc:
                 if message.future and not message.future.done():
                     message.future.set_exception(exc)
@@ -272,6 +280,22 @@ class SupervisedActorPool:
         for message in pending_messages:
             if message.future and not message.future.done():
                 message.future.set_exception(error)
+
+    async def _put_in_queue(self, msg: ActorMessage[Any]) -> None:
+        if self._shared_queue is None:
+            raise RuntimeError("Pool has not been started; call start() before send()")
+        if msg.enqueue_sequence is None:
+            msg.enqueue_sequence = self._sequence_counter
+            self._sequence_counter += 1
+        item = _PrioritizedMessage(
+            priority=msg.priority,
+            sequence=msg.enqueue_sequence,
+            message=msg,
+        )
+        try:
+            await asyncio.wait_for(self._shared_queue.put(item), timeout=1.0)
+        except TimeoutError as err:
+            raise OverloadError("Shared queue is full") from err
 
     async def send(self, msg: ActorMessage[Any]) -> None:
         if not self._running:
@@ -291,18 +315,7 @@ class SupervisedActorPool:
                 attributes={"llm_actor.priority": msg.priority},
             )
             msg.queue_wait_span_closer = wait_span.end
-        if msg.enqueue_sequence is None:
-            msg.enqueue_sequence = self._sequence_counter
-            self._sequence_counter += 1
-        item = _PrioritizedMessage(
-            priority=msg.priority,
-            sequence=msg.enqueue_sequence,
-            message=msg,
-        )
-        try:
-            await asyncio.wait_for(self._shared_queue.put(item), timeout=1.0)
-        except TimeoutError as err:
-            raise OverloadError("Shared queue is full") from err
+        await self._put_in_queue(msg)
 
     @overload
     async def generate(
@@ -414,11 +427,12 @@ class SupervisedActorPool:
         self._logger.info("Stopping pool: blocking new requests")
 
         if self._supervisor_task:
-            self._supervisor_task.cancel()
             try:
-                await self._supervisor_task
-            except asyncio.CancelledError:
-                pass
+                await asyncio.wait_for(self._supervisor_task, timeout=2.0)
+            except (TimeoutError, asyncio.CancelledError):
+                self._supervisor_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await self._supervisor_task
 
         self._logger.info("Waiting for actors to drain queues")
         try:

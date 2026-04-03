@@ -4,18 +4,17 @@
 
 ## Основные возможности
 
-- **Actor-inspired Design**: Внутренняя архитектура на базе единой **Priority Queue** и пула акторов с супервизором.
-- **Priority Management**: Поддержка уровней приоритета для задач (UI-запросы могут обгонять тяжелую фоновую аналитику).
+- **Multi-Provider Support**: Нативная интеграция с OpenAI, Anthropic и Sber GigaChat.
+- **Self-Hosted LLM Ready**: Полная поддержка vLLM, Ollama и других OpenAI/Anthropic-совместимых прокси. Работает с open-weight моделями (Llama, Qwen, GigaChat-Max).
+- **Parallel Tool Execution**: Выполнение запросов к нескольким инструментам одновременно, что радикально снижает общую задержку (latency) при сложных сценариях.
+- **Actor-inspired Design**: Внутренняя архитектура на базе единой **Priority Queue** и пула воркеров (акторов) с супервизором для автоматического восстановления.
+- **Priority Management**: Поддержка уровней приоритета для задач (UI-запросы могут мгновенно обгонять фоновую аналитику).
 - **Resilience (Отказоустойчивость)**:
     - **Circuit Breaker**: Защита от каскадных сбоев провайдера. Быстрый отказ (fail-fast) при перегрузке.
     - **Transport Retry**: Автоматические повторы при сетевых ошибках (502, 503, 504, 429) с экспоненциальной задержкой.
-    - **Semantic Retry**: Повторная генерация, если ответ LLM не прошел валидацию схемы (Pydantic/JSON Schema).
-- **Tool Calling Orchestration**: Встроенный цикл «запрос -> вызов инструмента -> результат -> ответ», поддерживающий вложенные вызовы и параллельное выполнение инструментов.
-- **Parallel Batching**: Эффективная параллельная обработка пачек запросов через пул воркеров.
-- **Structured Output**: Глубокая интеграция с Pydantic V2 для получения строго типизированных данных.
-- **LLMRequest и адаптеры**: Единый DTO запроса (поддержка `messages`, `tools`, `system_prompt`); готовые адаптеры OpenAI, Anthropic и GigaChat.
-- **Monitoring**: Опциональный экспорт метрик Prometheus (`llm-actor[metrics]`).
-- **Tracing**: Интеграция с OpenTelemetry для глубокой трассировки жизненного цикла запроса.
+    - **Semantic Retry**: Повторная генерация, если ответ LLM не прошел Pydantic-валидацию.
+- **Observability**: Глубокая трассировка через OpenTelemetry и структурированное логирование с контекстом (actor_id, trace_id).
+- **Structured Output**: Интеграция с Pydantic V2 для гарантированного получения строго типизированных данных.
 
 ## Требования
 
@@ -28,17 +27,13 @@
 # Базовая установка (только ядро)
 pip install llm-actor
 
-# С поддержкой GigaChat
-pip install llm-actor[gigachat]
+# С поддержкой провайдеров
+pip install "llm-actor[openai]"    # OpenAI SDK
+pip install "llm-actor[anthropic]" # Anthropic SDK
+pip install "llm-actor[gigachat]"  # Sber GigaChat SDK
 
-# С поддержкой OpenAI
-pip install llm-actor[openai]
-
-# С метриками Prometheus
-pip install llm-actor[metrics]
-
-# Адаптер Anthropic требует ручной установки пакета anthropic
-pip install anthropic
+# Все провайдеры + метрики Prometheus
+pip install "llm-actor[openai,anthropic,gigachat,metrics]"
 ```
 
 ## Быстрый старт
@@ -50,131 +45,45 @@ pip install anthropic
 ```python
 from llm_actor import LLMBrokerService, LLMBrokerSettings
 
+# Конфигурация брокера
 settings = LLMBrokerSettings(
-    LLM_NUM_ACTORS=5,                # Количество параллельных воркеров
-    LLM_RETRY_MAX_ATTEMPTS=3         # Повторы при сетевых ошибках
+    LLM_NUM_ACTORS=10,               # Размер пула воркеров
+    LLM_RETRY_MAX_ATTEMPTS=3,        # Повторы при сетевых ошибках
 )
 
-# OpenAI
+# OpenAI / OpenAI Compatible (vLLM, Ollama)
 service = LLMBrokerService.from_openai(api_key="...", model="gpt-4o", settings=settings)
 
-# Anthropic
-service = LLMBrokerService.from_anthropic(api_key="...", model="claude-3-5-sonnet-latest")
-
-# GigaChat (требуется [gigachat])
-service = LLMBrokerService.from_gigachat(credentials="...", model="GigaChat-Pro")
+# GigaChat
+service = LLMBrokerService.from_gigachat(credentials="...", model="GigaChat-Max-V2")
 ```
 
-### 2. Генерация текста и объектов
+## Разработка и Тестирование
 
-```python
-import asyncio
-from pydantic import BaseModel
+Библиотека разделяет быстрые Unit-тесты и тяжелые интеграционные проверки.
 
-class UserInfo(BaseModel):
-    name: str
-    age: int
-
-async def main():
-    await service.start()
-    try:
-        # Простой текст
-        answer = await service.generate("Кто такой Python?")
-        
-        # Структурированный вывод
-        user = await service.generate(
-            "Ивлеки: Иван, 25 лет", 
-            response_model=UserInfo,
-            priority=0 # Высокий приоритет
-        )
-        print(f"{user.name}, {user.age}")
-    finally:
-        await service.stop()
-
-asyncio.run(main())
+### Настройка окружения
+Скопируйте пример настроек и укажите свои ключи:
+```bash
+cp .env.example .env
 ```
 
-## Продвинутое использование
+### Запуск тестов
+```bash
+uv sync --all-extras --group dev
 
-### Вызов инструментов (Tool Calling)
+# 1. Unit-тесты (на моках, быстро, запуск при каждой правке)
+pytest tests/unit
 
-Брокер берет на себя цикл выполнения инструментов. Вам достаточно передать функции:
-
-```python
-def get_weather(city: str) -> str:
-    return f"В {city} солнечно, +25°C"
-
-async def get_stock_price(ticker: str) -> float:
-    return 150.5
-
-# В запросе
-result = await service.generate(
-    "Какая погода в Москве и сколько стоят акции AAPL?",
-    tools=[get_weather, get_stock_price]
-)
+# 2. Интеграционные тесты (на реальных моделях)
+# Требует активных API-ключей в .env
+pytest tests/integration --integration
 ```
 
-Брокер сам вызовет функции (включая асинхронные), передаст результаты обратно в LLM и вернет финальный текстовый ответ.
-
-### Пакетная обработка (Batching)
-
-Параллельное выполнение множества запросов через пул акторов:
-
-```python
-requests = [
-    ("Промпт 1", None),
-    (LLMRequest(prompt="Промпт 2", temperature=0.7), UserInfo),
-]
-# Все запросы выполняются параллельно в рамках лимитов пула
-results = await service.generate_batch(requests, priority=50)
-```
-
-> [!NOTE] 
-> `generate_batch` использует параллельное выполнение онлайн-запросов. Это ускоряет обработку, но отличается от "Batch API" (оффлайн-обработки со скидками), так как требует активного соединения.
-
-### Логирование
-
-Пакет использует **loguru** через обёртку `BrokerLogger`. По умолчанию пакет работает в «бережном» режиме: он только обогащает записи логов метаданными (тегами акторов, пулов и трассировки), не меняя ваши настройки вывода (sinks).
-
-**Интеграция с вашим приложением**:
-
-1.  **По умолчанию**: Брокер просто пишет в ваш существующий конфиг loguru. Чтобы увидеть теги брокера, добавьте в ваш формат строки следующие поля: `{extra[trace_tag]}{extra[actor_tag]}{extra[pool_tag]}`.
-2.  **Фирменный стиль**: Если вы хотите использовать предустановленный цветной формат вывода `llm-actor`, вызовите метод настройки в точке входа вашего приложения:
-
-```python
-from llm_actor import BrokerLogger
-
-# ОСТОРОЖНО: Это удалит все текущие sink'и loguru и настроит вывод в stderr
-BrokerLogger.setup_standard_logging(level="DEBUG")
-```
-
-**Доступные поля в `extra`**:
-
-| Поле | Смысл |
-| :--- | :--- |
-| `trace_tag` | Префикс вида `[trace=<id>] `, если активен OpenTelemetry context. |
-| `actor_tag` | Префикс `[actor-id] `, если лог идет из конкретного воркера. |
-| `pool_tag` | Префикс `[pool-id] ` для идентификации пула. |
-
-### Мониторинг (Prometheus)
-
-При установке `llm-actor[metrics]` доступны метрики:
-- `llm_actor_inbox_size`: размер очереди.
-- `llm_batch_processing_duration_seconds`: время обработки.
-- `llm_circuit_breaker_trips_total`: срабатывания защиты.
-- `llm_actor_restarts_total`: перезапуски упавших акторов.
+Интеграционные тесты автоматически пропускаются, если не передан флаг `--integration` или если отсутствуют необходимые API-ключи.
 
 ## Философия дизайна
 
-- **Shared Priority Queue**: Единая очередь с приоритетами гарантирует честное распределение ресурсов.
-- **Изоляция сбоев**: Падение воркера не влияет на остальные. Супервизор автоматически восстанавливает пул.
-- **Backpressure**: Пакет защищает LLM и ваше приложение от перегрузки, удерживая нагрузку в рамках `LLM_NUM_ACTORS`.
-
-## Разработка
-
-```bash
-uv sync --all-extras --group dev
-pytest
-ruff check .
-mypy src
-```
+- **Shared Priority Queue**: Единая очередь обеспечивающая приоритезацию.
+- **Изоляция сбоев**: Падение воркера не вешает всю систему.
+- **Backpressure**: Защита провайдера от перегрузки.
