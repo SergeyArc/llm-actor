@@ -1,4 +1,4 @@
-# LLM Actor: Industrial-Grade LLM Throughput for Python
+# LLM Actor: Resilient Throughput, Structured Output & Tool Calling
 
 <p align="center">
   <a href="https://pypi.org/project/llm-actor/"><img src="https://img.shields.io/pypi/v/llm-actor.svg" alt="PyPI version"></a>
@@ -11,7 +11,7 @@
   <i>🌐 Documentation: <b>English</b> | <a href="docs/README.ru.md">Russian</a></i>
 </p>
 
-**LLM Actor** is a high-performance orchestration layer designed to handle Large Language Model (LLM) requests at scale. Inspired by the **Actor Model**, it solves the "last mile" of production LLM integration: handling concurrency, ensuring resilience, and managing task priority without overhead.
+**LLM Actor** is a high-performance orchestration layer designed to handle Large Language Model (LLM) requests at scale. Inspired by the **Actor Model**, it solves the "last mile" of production LLM integration: handling concurrency, ensuring resilience, and providing **guaranteed structured output** and **agentic tool calling** without the boilerplate.
 
 ---
 
@@ -20,7 +20,8 @@
 Most developers start with simple API calls. But when you move to production, you quickly hit:
 - **Rate Limit Exhaustion**: No global coordination for token usage.
 - **Provider Outages**: One slow response can hang your entire app.
-- **Unreliable Parsing**: LLMs output garbage; your app crashes.
+- **Unreliable Parsing**: Hard to get **guaranteed Structured Output** from raw strings.
+- **Complex Agentic Flows**: Orchestrating **Tool Calling** (especially in parallel) is error-prone.
 - **Lack of Priority**: Background tasks block high-priority user UI requests.
 
 **LLM Actor** fixes this. It’s not just a wrapper; it’s a **resilient worker pool** built to sit between your application logic and your LLM providers.
