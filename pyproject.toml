@@ -6,6 +6,10 @@ build-backend = "hatchling.build"
 name = "llm-actor"
 version = "0.1.0"
 description = "LLM actor: pool, circuit breaker, retries, metrics"
+authors = [
+    { name = "Sergey Ark", email = "[sergey-vd@outlook.com]" }
+]
+license = { text = "MIT" }
 readme = "README.md"
 requires-python = ">=3.13,<3.14"
 dependencies = [
@@ -14,6 +18,21 @@ dependencies = [
     "loguru>=0.7.0",
     "opentelemetry-api>=1.25.0",
 ]
+keywords = ["llm", "actor", "concurrent", "parallel", "resilience", "circuit-breaker", "openai", "anthropic", "gigachat"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+[project.urls]
+Homepage = "https://github.com/SergeyArc/llm-actor"
+Repository = "https://github.com/SergeyArc/llm-actor"
+Issues = "https://github.com/SergeyArc/llm-actor/issues"
 
 [project.optional-dependencies]
 gigachat = ["gigachat"]

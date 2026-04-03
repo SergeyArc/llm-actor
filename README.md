@@ -1,12 +1,8 @@
-# 🎭 LLM Actor: Industrial-Grade LLM Throughput for Python
-
-<p align="center">
-  <img src="docs/assets/logo.png" width="400" alt="LLM Actor Logo">
-</p>
+# LLM Actor: Industrial-Grade LLM Throughput for Python
 
 <p align="center">
   <a href="https://pypi.org/project/llm-actor/"><img src="https://img.shields.io/pypi/v/llm-actor.svg" alt="PyPI version"></a>
-  <a href="https://github.com/your-username/llm-actor/actions/workflows/test.yml"><img src="https://github.com/your-username/llm-actor/actions/workflows/test.yml/badge.svg" alt="Tests status"></a>
+  <a href="https://github.com/SergeyArc/llm-actor/actions/workflows/test.yml"><img src="https://github.com/SergeyArc/llm-actor/actions/workflows/test.yml/badge.svg" alt="Tests status"></a>
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
   <a href="https://www.python.org/downloads/release/python-3130/"><img src="https://img.shields.io/badge/python-3.13-blue.svg" alt="Python 3.13"></a>
 </p>
