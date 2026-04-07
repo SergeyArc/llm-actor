@@ -9,9 +9,11 @@ pytest.importorskip("openai")
 pytest.importorskip("anthropic")
 
 from llm_actor import LLMActorService
+from llm_actor.actors.pool import SupervisedActorPool
 from llm_actor.client.adapters.anthropic import AnthropicAdapter
 from llm_actor.client.adapters.gigachat import GigaChatAdapter
 from llm_actor.client.adapters.openai import OpenAIAdapter
+from llm_actor.core.messages import ActorMessage
 from llm_actor.core.request import LLMRequest
 from llm_actor.settings import LLMActorSettings
 
@@ -233,11 +235,6 @@ async def test_gigachat_extra_headers_logs_warning_in_tools(
 
 async def test_caller_context_preserved_on_requeue() -> None:
     """TD6: _requeue_pending_messages сохраняет caller_context (в отличие от otel_context)."""
-    from unittest.mock import AsyncMock as _AsyncMock, MagicMock as _MagicMock
-
-    from llm_actor.actors.pool import SupervisedActorPool
-    from llm_actor.core.messages import ActorMessage
-
     ctx = contextvars.copy_context()
     loop = asyncio.get_running_loop()
     future: asyncio.Future[str] = loop.create_future()
@@ -249,10 +246,10 @@ async def test_caller_context_preserved_on_requeue() -> None:
         caller_context=ctx,
     )
 
-    mock_client = _MagicMock()
+    mock_client = MagicMock()
     pool = SupervisedActorPool(client=mock_client, settings=LLMActorSettings(LLM_NUM_ACTORS=1))
 
-    with patch.object(pool, "_put_in_queue", _AsyncMock()):
+    with patch.object(pool, "_put_in_queue", AsyncMock()):
         await pool._requeue_pending_messages([msg])
 
     assert msg.otel_context is None, "otel_context должен быть сброшен при requeue"
