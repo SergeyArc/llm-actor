@@ -74,7 +74,10 @@ class OpenAIAdapter:
             payload["stop"] = request.stop_sequences
 
         try:
-            completion = await self._client.chat.completions.create(**payload)
+            completion = await self._client.chat.completions.create(
+                **payload,
+                extra_headers=request.extra_headers,
+            )
         except (RateLimitError, APITimeoutError, APIConnectionError, APIStatusError) as exc:
             raise _map_openai_exception(exc) from exc
 
@@ -113,7 +116,10 @@ class OpenAIAdapter:
             payload["max_tokens"] = request.max_tokens
 
         try:
-            completion = await self._client.chat.completions.create(**payload)
+            completion = await self._client.chat.completions.create(
+                **payload,
+                extra_headers=request.extra_headers,
+            )
         except (RateLimitError, APITimeoutError, APIConnectionError, APIStatusError) as exc:
             raise _map_openai_exception(exc) from exc
 

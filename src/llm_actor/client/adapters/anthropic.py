@@ -73,7 +73,10 @@ class AnthropicAdapter:
             payload["stop_sequences"] = request.stop_sequences
 
         try:
-            message = await self._client.messages.create(**payload)
+            message = await self._client.messages.create(
+                **payload,
+                extra_headers=request.extra_headers,
+            )
         except (RateLimitError, APITimeoutError, APIConnectionError, APIStatusError) as exc:
             raise _map_anthropic_exception(exc) from exc
 
@@ -115,7 +118,10 @@ class AnthropicAdapter:
             payload["temperature"] = request.temperature
 
         try:
-            message = await self._client.messages.create(**payload)
+            message = await self._client.messages.create(
+                **payload,
+                extra_headers=request.extra_headers,
+            )
         except (RateLimitError, APITimeoutError, APIConnectionError, APIStatusError) as exc:
             raise _map_anthropic_exception(exc) from exc
 

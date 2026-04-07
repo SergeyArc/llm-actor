@@ -11,7 +11,7 @@
   <i>Documentation: <b>English</b> | <a href="docs/README.ru.md">Russian</a></i>
 </p>
 
-**LLM Actor** — это эффективный Actor Pool для **shared self-hosted inference** (vLLM, Ollama) или прокси-сервисов. Мы решаем задачу «последней мили»: управление конкурентными запросами, их приоритизация и гарантированный структурированный вывод без лишнего boilerplate.
+**LLM Actor** is an efficient actor pool for **shared self-hosted inference** (vLLM, Ollama) or proxy services. It covers the “last mile”: managing concurrent requests, prioritizing them, and delivering guaranteed structured output without extra boilerplate.
 
 ---
 
@@ -40,6 +40,7 @@ While cloud providers have their own rate limits, production self-hosted inferen
     - Native adapters: OpenAI, Anthropic, Sber GigaChat.
     - Proxy support: **vLLM**, **Ollama**, and any OpenAI-compatible endpoint.
 - **Deep Observability**: Full **OpenTelemetry** integration. Trace every request from the queue through the actor to the final provider response.
+- **Caller context & extra HTTP headers**: Python `contextvars` set before `generate()` are restored in the worker when your LLM client runs; `LLMRequest.extra_headers` is forwarded to the OpenAI and Anthropic SDKs (GigaChat logs a warning and ignores extra headers).
 
 ---
 

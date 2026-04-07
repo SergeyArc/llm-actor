@@ -1,4 +1,5 @@
 import asyncio
+import contextvars
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from uuid import uuid4
@@ -14,6 +15,7 @@ class ActorMessage[T]:
     future: asyncio.Future[T] | None = None
     priority: int = 10
     otel_context: dict[str, str] | None = None
+    caller_context: contextvars.Context | None = None
     queue_wait_span_closer: Callable[[], None] | None = field(
         default=None, init=False, repr=False, compare=False
     )

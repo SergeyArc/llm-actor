@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import contextvars
 import time
 from dataclasses import dataclass
 from typing import Any, TypeVar, overload
@@ -359,6 +360,7 @@ class SupervisedActorPool:
         )
         tracer = otel_tracing.get_tracer()
         msg.otel_context = otel_tracing.inject_context()
+        msg.caller_context = contextvars.copy_context()
         wait_span = tracer.start_span(
             "llm_pool.wait",
             attributes={"llm_actor.priority": priority},

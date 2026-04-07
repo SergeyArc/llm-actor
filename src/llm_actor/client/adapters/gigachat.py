@@ -1,3 +1,4 @@
+import logging
 from typing import Any, cast
 
 from llm_actor.client.interface import ToolCapableClientInterface
@@ -9,6 +10,8 @@ from llm_actor.exceptions import (
     LLMServiceOverloadedError,
     LLMServiceUnavailableError,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _gigachat_temperature(request: LLMRequest) -> float:
@@ -93,6 +96,10 @@ class GigaChatAdapter(ToolCapableClientInterface):
         return msgs
 
     async def generate_async(self, request: LLMRequest) -> str:
+        if request.extra_headers:
+            logger.warning(
+                "GigaChatAdapter: extra_headers не поддерживаются и будут проигнорированы"
+            )
         try:
             from gigachat.models import Chat
 
@@ -114,6 +121,10 @@ class GigaChatAdapter(ToolCapableClientInterface):
     async def generate_with_tools_async(
         self, request: LLMRequest, conversation: list[dict[str, Any]]
     ) -> LLMResponse:
+        if request.extra_headers:
+            logger.warning(
+                "GigaChatAdapter: extra_headers не поддерживаются и будут проигнорированы"
+            )
         try:
             from gigachat.models import Chat, Function
 

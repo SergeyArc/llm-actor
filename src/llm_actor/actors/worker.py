@@ -271,7 +271,15 @@ class ModelActor:
                             log.error("Request processing failed: {}", e, exc_info=True)
                             raise
 
-        results = await asyncio.gather(*[limited_ask(msg) for msg in batch], return_exceptions=True)
+        results = await asyncio.gather(
+            *[
+                asyncio.create_task(limited_ask(msg), context=msg.caller_context)
+                if msg.caller_context is not None
+                else limited_ask(msg)
+                for msg in batch
+            ],
+            return_exceptions=True,
+        )
 
         success_count = sum(1 for r in results if not isinstance(r, Exception))
         error_count = len(results) - success_count

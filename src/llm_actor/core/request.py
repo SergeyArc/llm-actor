@@ -15,6 +15,7 @@ class LLMRequest:
     extra: dict[str, Any] = field(default_factory=dict)
     messages: list[dict[str, Any]] | None = None
     tools: list[Tool | Callable[..., Any]] | None = None
+    extra_headers: dict[str, str] | None = None
     tool_timeout: float | None = None
 
     def __post_init__(self) -> None:
