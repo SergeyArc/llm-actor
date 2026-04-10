@@ -11,7 +11,11 @@ from llm_actor.actors.worker import ModelActor
 from llm_actor.core.messages import ActorMessage
 from llm_actor.core.request import LLMRequest
 from llm_actor.exceptions import ActorFailedError
-from llm_actor.metrics import MetricsCollector, default_metrics_collector, is_prometheus_metrics_available
+from llm_actor.metrics import (
+    MetricsCollector,
+    default_metrics_collector,
+    is_prometheus_metrics_available,
+)
 from llm_actor.settings import LLMActorSettings
 from tests.dummy_llm_client import DummyLLMClient
 

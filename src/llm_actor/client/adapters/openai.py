@@ -61,11 +61,7 @@ class OpenAIAdapter:
             messages.extend(extra_messages)
         return messages
 
-    async def generate_async(self, request: LLMRequest) -> str:
-        messages = self._build_messages(request)
-        payload: dict[str, Any] = dict(request.extra)
-        payload["model"] = self._model
-        payload["messages"] = messages
+    def _apply_openai_optional_params(self, payload: dict[str, Any], request: LLMRequest) -> None:
         if request.temperature is not None:
             payload["temperature"] = request.temperature
         if request.max_tokens is not None:
@@ -75,13 +71,51 @@ class OpenAIAdapter:
         if request.stop_sequences is not None:
             payload["stop"] = request.stop_sequences
 
+    async def _create_openai_chat_completion(self, payload: dict[str, Any], request: LLMRequest) -> Any:
         try:
-            completion = await self._client.chat.completions.create(
+            return await self._client.chat.completions.create(
                 **payload,
                 extra_headers=request.extra_headers,
             )
         except (RateLimitError, APITimeoutError, APIConnectionError, APIStatusError) as exc:
             raise _map_openai_exception(exc) from exc
+
+    def _tool_calls_from_openai_message(self, message: Any) -> list[ToolCall]:
+        tool_calls: list[ToolCall] = []
+        for tc in message.tool_calls:
+            try:
+                arguments = json.loads(tc.function.arguments or "{}")
+            except json.JSONDecodeError as exc:
+                raise LLMServiceGeneralError(
+                    f"Malformed JSON in tool call arguments for '{tc.function.name}': {exc}"
+                ) from exc
+            tool_calls.append(ToolCall(id=tc.id, name=tc.function.name, arguments=arguments))
+        return tool_calls
+
+    def _assistant_message_with_tool_calls(self, message: Any) -> dict[str, Any]:
+        return {
+            "role": "assistant",
+            "content": message.content or "",
+            "tool_calls": [
+                {
+                    "id": tc.id,
+                    "type": "function",
+                    "function": {
+                        "name": tc.function.name,
+                        "arguments": tc.function.arguments,
+                    },
+                }
+                for tc in message.tool_calls
+            ],
+        }
+
+    async def generate_async(self, request: LLMRequest) -> str:
+        messages = self._build_messages(request)
+        payload: dict[str, Any] = dict(request.extra)
+        payload["model"] = self._model
+        payload["messages"] = messages
+        self._apply_openai_optional_params(payload, request)
+        completion = await self._create_openai_chat_completion(payload, request)
 
         if not completion.choices:
             raise LLMServiceGeneralError("Empty OpenAI response: no choices")
@@ -109,25 +143,10 @@ class OpenAIAdapter:
         payload["messages"] = messages
         payload["tools"] = tools_schema
 
-        # Unless overridden in request.extra
         if "tool_choice" not in payload:
             payload["tool_choice"] = "auto"
-        if request.temperature is not None:
-            payload["temperature"] = request.temperature
-        if request.max_tokens is not None:
-            payload["max_tokens"] = request.max_tokens
-        if request.top_p is not None:
-            payload["top_p"] = request.top_p
-        if request.stop_sequences is not None:
-            payload["stop"] = request.stop_sequences
-
-        try:
-            completion = await self._client.chat.completions.create(
-                **payload,
-                extra_headers=request.extra_headers,
-            )
-        except (RateLimitError, APITimeoutError, APIConnectionError, APIStatusError) as exc:
-            raise _map_openai_exception(exc) from exc
+        self._apply_openai_optional_params(payload, request)
+        completion = await self._create_openai_chat_completion(payload, request)
 
         if not completion.choices:
             raise LLMServiceGeneralError("Empty OpenAI response: no choices")
@@ -135,34 +154,11 @@ class OpenAIAdapter:
         message = completion.choices[0].message
 
         if message.tool_calls:
-            tool_calls = []
-            for tc in message.tool_calls:
-                try:
-                    arguments = json.loads(tc.function.arguments or "{}")
-                except json.JSONDecodeError as exc:
-                    raise LLMServiceGeneralError(
-                        f"Malformed JSON in tool call arguments for '{tc.function.name}': {exc}"
-                    ) from exc
-                tool_calls.append(ToolCall(id=tc.id, name=tc.function.name, arguments=arguments))
-            assistant_message: dict[str, Any] = {
-                "role": "assistant",
-                "content": message.content or "",
-                "tool_calls": [
-                    {
-                        "id": tc.id,
-                        "type": "function",
-                        "function": {
-                            "name": tc.function.name,
-                            "arguments": tc.function.arguments,
-                        },
-                    }
-                    for tc in message.tool_calls
-                ],
-            }
+            tool_calls = self._tool_calls_from_openai_message(message)
             return LLMResponse(
                 content=None,
                 tool_calls=tool_calls,
-                assistant_message=assistant_message,
+                assistant_message=self._assistant_message_with_tool_calls(message),
             )
 
         content = message.content

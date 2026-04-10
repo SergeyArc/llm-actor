@@ -1,3 +1,4 @@
+import json
 import logging
 from typing import Any, cast
 
@@ -95,11 +96,58 @@ class GigaChatAdapter(ToolCapableClientInterface):
 
         return msgs
 
-    async def generate_async(self, request: LLMRequest) -> str:
+    def _warn_extra_headers_if_needed(self, request: LLMRequest) -> None:
         if request.extra_headers:
             logger.warning(
                 "GigaChatAdapter: extra_headers не поддерживаются и будут проигнорированы"
             )
+
+    def _gigachat_functions_from_request(self, request: LLMRequest) -> list[Any]:
+        from gigachat.models import Function
+
+        if not request.tools:
+            return []
+        functions: list[Any] = []
+        for tool in cast(list[Tool], request.tools):
+            schema = tool.build_openai_schema()["function"]
+            functions.append(
+                Function(
+                    name=schema["name"],
+                    description=schema["description"],
+                    parameters=schema["parameters"],
+                )
+            )
+        return functions
+
+    def _gigachat_tool_response(self, msg: Any) -> LLMResponse:
+        tool_calls: list[ToolCall] = []
+        if msg.function_call:
+            fc = msg.function_call
+            raw_args = (
+                json.loads(fc.arguments) if isinstance(fc.arguments, str) else fc.arguments
+            )
+            tool_args: dict[str, Any] = raw_args if isinstance(raw_args, dict) else {}
+            tool_calls.append(
+                ToolCall(
+                    id=f"call_{fc.name}",
+                    name=fc.name,
+                    arguments=tool_args,
+                )
+            )
+        assistant_msg: dict[str, Any] = {"role": "assistant", "content": msg.content}
+        if msg.function_call:
+            assistant_msg["function_call"] = {
+                "name": msg.function_call.name,
+                "arguments": msg.function_call.arguments,
+            }
+        return LLMResponse(
+            content=msg.content,
+            tool_calls=tool_calls,
+            assistant_message=assistant_msg,
+        )
+
+    async def generate_async(self, request: LLMRequest) -> str:
+        self._warn_extra_headers_if_needed(request)
         try:
             from gigachat.models import Chat
 
@@ -129,28 +177,12 @@ class GigaChatAdapter(ToolCapableClientInterface):
     async def generate_with_tools_async(
         self, request: LLMRequest, conversation: list[dict[str, Any]]
     ) -> LLMResponse:
-        if request.extra_headers:
-            logger.warning(
-                "GigaChatAdapter: extra_headers не поддерживаются и будут проигнорированы"
-            )
+        self._warn_extra_headers_if_needed(request)
         try:
-            from gigachat.models import Chat, Function
+            from gigachat.models import Chat
 
             msgs = self._convert_messages(request, conversation)
-
-            functions = []
-            if request.tools:
-                for tool in cast(list[Tool], request.tools):
-                    # GigaChat expects parameter schema as a plain dict
-                    schema = tool.build_openai_schema()["function"]
-                    functions.append(
-                        Function(
-                            name=schema["name"],
-                            description=schema["description"],
-                            parameters=schema["parameters"],
-                        )
-                    )
-
+            functions = self._gigachat_functions_from_request(request)
             chat_kwargs: dict[str, Any] = {
                 **request.extra,
                 "messages": msgs,
@@ -165,43 +197,8 @@ class GigaChatAdapter(ToolCapableClientInterface):
             if request.stop_sequences is not None:
                 chat_kwargs["stop"] = request.stop_sequences
 
-            chat_obj = Chat(**chat_kwargs)
-
-            response = await self._client.achat(chat_obj)
-            choice = response.choices[0]
-            msg = choice.message
-
-            tool_calls = []
-
-            if msg.function_call:
-                import json
-
-                fc = msg.function_call
-                raw_args = (
-                    json.loads(fc.arguments) if isinstance(fc.arguments, str) else fc.arguments
-                )
-                tool_args: dict[str, Any] = raw_args if isinstance(raw_args, dict) else {}
-                tool_calls.append(
-                    ToolCall(
-                        id=f"call_{fc.name}",
-                        name=fc.name,
-                        arguments=tool_args,
-                    )
-                )
-
-            # Build assistant_message for conversation history
-            assistant_msg: dict[str, Any] = {"role": "assistant", "content": msg.content}
-            if msg.function_call:
-                assistant_msg["function_call"] = {
-                    "name": msg.function_call.name,
-                    "arguments": msg.function_call.arguments,
-                }
-
-            return LLMResponse(
-                content=msg.content,
-                tool_calls=tool_calls,
-                assistant_message=assistant_msg,
-            )
+            response = await self._client.achat(Chat(**chat_kwargs))
+            return self._gigachat_tool_response(response.choices[0].message)
         except LLMServiceError:
             raise
         except Exception as exc:

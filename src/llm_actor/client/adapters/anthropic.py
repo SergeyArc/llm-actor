@@ -57,14 +57,9 @@ class AnthropicAdapter:
             messages.extend(extra_messages)
         return messages
 
-    async def generate_async(self, request: LLMRequest) -> str:
-        max_tokens = request.max_tokens if request.max_tokens is not None else 4096
-        messages = self._build_messages(request)
-
-        payload: dict[str, Any] = dict(request.extra)
-        payload["model"] = self._model
-        payload["max_tokens"] = max_tokens
-        payload["messages"] = messages
+    def _apply_anthropic_optional_params(
+        self, payload: dict[str, Any], request: LLMRequest
+    ) -> None:
         if request.system_prompt is not None:
             payload["system"] = request.system_prompt
         if request.temperature is not None:
@@ -74,14 +69,18 @@ class AnthropicAdapter:
         if request.stop_sequences is not None:
             payload["stop_sequences"] = request.stop_sequences
 
+    async def _create_anthropic_message(
+        self, payload: dict[str, Any], request: LLMRequest
+    ) -> Any:
         try:
-            message = await self._client.messages.create(
+            return await self._client.messages.create(
                 **payload,
                 extra_headers=request.extra_headers,
             )
         except (RateLimitError, APITimeoutError, APIConnectionError, APIStatusError) as exc:
             raise _map_anthropic_exception(exc) from exc
 
+    def _text_from_anthropic_message(self, message: Any) -> str:
         parts: list[str] = []
         for block in message.content:
             if hasattr(block, "text"):
@@ -89,15 +88,57 @@ class AnthropicAdapter:
             elif isinstance(block, dict) and block.get("type") == "text":
                 parts.append(str(block.get("text", "")))
         text = "".join(parts).strip()
-        if not text:
-            reason = getattr(message, "stop_reason", "unknown")
-            if message.content and not parts:
-                block_types = [type(b).__name__ for b in message.content]
-                raise LLMServiceGeneralError(
-                    f"Anthropic returned a non-text response (stop_reason: {reason}, blocks: {block_types})"
+        if text:
+            return text
+        reason = getattr(message, "stop_reason", "unknown")
+        if message.content and not parts:
+            block_types = [type(b).__name__ for b in message.content]
+            raise LLMServiceGeneralError(
+                f"Anthropic returned a non-text response (stop_reason: {reason}, blocks: {block_types})"
+            )
+        raise LLMServiceGeneralError(f"Empty Anthropic response (stop_reason: {reason})")
+
+    def _llm_response_from_anthropic_tool_message(self, message: Any) -> LLMResponse:
+        tool_use_blocks = [
+            b for b in message.content if hasattr(b, "type") and b.type == "tool_use"
+        ]
+        if not tool_use_blocks:
+            text_blocks = [b for b in message.content if hasattr(b, "text")]
+            text = "".join(b.text for b in text_blocks).strip()
+            return LLMResponse(
+                content=text,
+                assistant_message={"role": "assistant", "content": text},
+            )
+        tool_calls = [
+            ToolCall(id=b.id, name=b.name, arguments=dict(b.input)) for b in tool_use_blocks
+        ]
+        all_blocks: list[dict[str, Any]] = []
+        for b in message.content:
+            if not hasattr(b, "type"):
+                continue
+            if b.type == "tool_use":
+                all_blocks.append(
+                    {"type": "tool_use", "id": b.id, "name": b.name, "input": dict(b.input)}
                 )
-            raise LLMServiceGeneralError(f"Empty Anthropic response (stop_reason: {reason})")
-        return text
+            elif b.type == "text" and hasattr(b, "text"):
+                all_blocks.append({"type": "text", "text": b.text})
+        assistant_message: dict[str, Any] = {"role": "assistant", "content": all_blocks}
+        return LLMResponse(
+            content=None,
+            tool_calls=tool_calls,
+            assistant_message=assistant_message,
+        )
+
+    async def generate_async(self, request: LLMRequest) -> str:
+        max_tokens = request.max_tokens if request.max_tokens is not None else 4096
+        messages = self._build_messages(request)
+        payload: dict[str, Any] = dict(request.extra)
+        payload["model"] = self._model
+        payload["max_tokens"] = max_tokens
+        payload["messages"] = messages
+        self._apply_anthropic_optional_params(payload, request)
+        message = await self._create_anthropic_message(payload, request)
+        return self._text_from_anthropic_message(message)
 
     async def generate_with_tools_async(
         self,
@@ -108,59 +149,14 @@ class AnthropicAdapter:
         messages = self._build_messages(request, extra_messages=conversation or None)
         resolved_tools = cast(list[Tool], request.tools or [])
         tools_schema = [tool.build_anthropic_schema() for tool in resolved_tools]
-
         payload: dict[str, Any] = dict(request.extra)
         payload["model"] = self._model
         payload["max_tokens"] = max_tokens
         payload["messages"] = messages
         payload["tools"] = tools_schema
-        if request.system_prompt is not None:
-            payload["system"] = request.system_prompt
-        if request.temperature is not None:
-            payload["temperature"] = request.temperature
-        if request.top_p is not None:
-            payload["top_p"] = request.top_p
-        if request.stop_sequences is not None:
-            payload["stop_sequences"] = request.stop_sequences
-
-        try:
-            message = await self._client.messages.create(
-                **payload,
-                extra_headers=request.extra_headers,
-            )
-        except (RateLimitError, APITimeoutError, APIConnectionError, APIStatusError) as exc:
-            raise _map_anthropic_exception(exc) from exc
-
-        tool_use_blocks = [
-            b for b in message.content if hasattr(b, "type") and b.type == "tool_use"
-        ]
-        if tool_use_blocks:
-            tool_calls = [
-                ToolCall(id=b.id, name=b.name, arguments=dict(b.input)) for b in tool_use_blocks
-            ]
-            all_blocks: list[dict[str, Any]] = []
-            for b in message.content:
-                if not hasattr(b, "type"):
-                    continue
-                if b.type == "tool_use":
-                    all_blocks.append(
-                        {"type": "tool_use", "id": b.id, "name": b.name, "input": dict(b.input)}
-                    )
-                elif b.type == "text" and hasattr(b, "text"):
-                    all_blocks.append({"type": "text", "text": b.text})
-            assistant_message: dict[str, Any] = {"role": "assistant", "content": all_blocks}
-            return LLMResponse(
-                content=None,
-                tool_calls=tool_calls,
-                assistant_message=assistant_message,
-            )
-
-        text_blocks = [b for b in message.content if hasattr(b, "text")]
-        text = "".join(b.text for b in text_blocks).strip()
-        return LLMResponse(
-            content=text,
-            assistant_message={"role": "assistant", "content": text},
-        )
+        self._apply_anthropic_optional_params(payload, request)
+        message = await self._create_anthropic_message(payload, request)
+        return self._llm_response_from_anthropic_tool_message(message)
 
     def format_tool_results(self, results: list[ToolResult]) -> list[dict[str, Any]]:
         return [
