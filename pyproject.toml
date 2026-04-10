@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "llm-actor"
-version = "0.2.1"
+version = "0.2.2"
 description = "LLM actor: pool, circuit breaker, retries, metrics"
 authors = [
     { name = "Sergey Arс", email = "sergey-vd@outlook.com" }
