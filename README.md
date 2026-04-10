@@ -206,6 +206,27 @@ async with service:
 
 ---
 
+## Full Control over LLM Settings
+
+Every request can be fine-tuned via `LLMRequest`. We support common parameters natively and provider-specific ones via the `extra` field:
+
+```python
+from llm_actor import LLMRequest
+
+request = LLMRequest(
+    prompt="Explain quantum entanglement",
+    temperature=0.7,
+    max_tokens=1000,
+    top_p=0.9,
+    stop_sequences=["###"],
+    # For parameters not supported natively:
+    extra={"presence_penalty": 0.5, "seed": 42}
+)
+await service.generate(request)
+```
+
+---
+
 ## Provider Support Matrix
 
 | Provider | Generations | Parallel Tools | Tested |

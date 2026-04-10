@@ -69,6 +69,8 @@ class AnthropicAdapter:
             payload["system"] = request.system_prompt
         if request.temperature is not None:
             payload["temperature"] = request.temperature
+        if request.top_p is not None:
+            payload["top_p"] = request.top_p
         if request.stop_sequences is not None:
             payload["stop_sequences"] = request.stop_sequences
 
@@ -116,6 +118,10 @@ class AnthropicAdapter:
             payload["system"] = request.system_prompt
         if request.temperature is not None:
             payload["temperature"] = request.temperature
+        if request.top_p is not None:
+            payload["top_p"] = request.top_p
+        if request.stop_sequences is not None:
+            payload["stop_sequences"] = request.stop_sequences
 
         try:
             message = await self._client.messages.create(

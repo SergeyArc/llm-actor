@@ -70,6 +70,8 @@ class OpenAIAdapter:
             payload["temperature"] = request.temperature
         if request.max_tokens is not None:
             payload["max_tokens"] = request.max_tokens
+        if request.top_p is not None:
+            payload["top_p"] = request.top_p
         if request.stop_sequences is not None:
             payload["stop"] = request.stop_sequences
 
@@ -114,6 +116,10 @@ class OpenAIAdapter:
             payload["temperature"] = request.temperature
         if request.max_tokens is not None:
             payload["max_tokens"] = request.max_tokens
+        if request.top_p is not None:
+            payload["top_p"] = request.top_p
+        if request.stop_sequences is not None:
+            payload["stop"] = request.stop_sequences
 
         try:
             completion = await self._client.chat.completions.create(

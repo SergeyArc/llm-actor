@@ -105,12 +105,20 @@ class GigaChatAdapter(ToolCapableClientInterface):
 
             msgs = self._convert_messages(request)
 
-            chat_obj = Chat(
-                messages=msgs,
-                model=self._model,
-                temperature=_gigachat_temperature(request),
-                max_tokens=request.max_tokens,
-            )
+            chat_kwargs: dict[str, Any] = {
+                **request.extra,
+                "messages": msgs,
+                "model": self._model,
+                "temperature": _gigachat_temperature(request),
+            }
+            if request.max_tokens is not None:
+                chat_kwargs["max_tokens"] = request.max_tokens
+            if request.top_p is not None:
+                chat_kwargs["top_p"] = request.top_p
+            if request.stop_sequences is not None:
+                chat_kwargs["stop"] = request.stop_sequences
+
+            chat_obj = Chat(**chat_kwargs)
             response = await self._client.achat(chat_obj)
             return response.choices[0].message.content
         except LLMServiceError:
@@ -143,13 +151,21 @@ class GigaChatAdapter(ToolCapableClientInterface):
                         )
                     )
 
-            chat_obj = Chat(
-                messages=msgs,
-                model=self._model,
-                temperature=_gigachat_temperature(request),
-                max_tokens=request.max_tokens,
-                functions=functions if functions else None,
-            )
+            chat_kwargs: dict[str, Any] = {
+                **request.extra,
+                "messages": msgs,
+                "model": self._model,
+                "temperature": _gigachat_temperature(request),
+                "functions": functions if functions else None,
+            }
+            if request.max_tokens is not None:
+                chat_kwargs["max_tokens"] = request.max_tokens
+            if request.top_p is not None:
+                chat_kwargs["top_p"] = request.top_p
+            if request.stop_sequences is not None:
+                chat_kwargs["stop"] = request.stop_sequences
+
+            chat_obj = Chat(**chat_kwargs)
 
             response = await self._client.achat(chat_obj)
             choice = response.choices[0]
