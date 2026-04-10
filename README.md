@@ -52,6 +52,107 @@ To keep `LLM Actor` lightweight and universal, we made specific architectural tr
 - **No proactive token rate limiting**: We don't counting tokens *before* sending them. Ideal for self-hosted inference (vLLM/Ollama) where TPM quotas aren't the primary bottleneck. For external APIs with strict TPM limits, we rely on **Reactive Resilience** (Backoff + CB).
 - **Single-provider per pool**: A pool is tied to a single client instance. For multi-provider routing with independent circuit breaking, use separate `LLMActorService` instances.
 
+## The Problem: What Production Code Usually Looks Like
+
+Most teams start with a simple async client. It works great in development.
+
+```python
+# A typical "good enough" async client
+class ModelClient:
+    async def generate(self, messages: list[dict]) -> str:
+        try:
+            response = await self.client.chat.completions.create(...)
+            return response.choices[0].message.content
+        except Exception as e:
+            logger.error("Generation failed: %s", e)
+            return f"Error: {e}"  # Silently swallowed. Caller never knows.
+```
+
+Then you hit production with a shared GPU node and run 200 tasks:
+
+```python
+# Seems reasonable. It's not.
+results = await asyncio.gather(*[client.generate(msg) for msg in messages])
+```
+
+**What actually happens:**
+- 200 concurrent requests hit your vLLM instance → OOM or queue overflow
+- Mass timeouts → every call returns `"Error: ..."` silently
+- High-priority UI request waits behind 199 background batch tasks
+- One slow response hangs your entire orchestration layer
+- No visibility into what failed, when, or why
+
+---
+
+## The Fix: LLM Actor
+
+```python
+from llm_actor import LLMActorService, LLMActorSettings, Priority
+from pydantic import BaseModel
+
+class SummaryResult(BaseModel):
+    summary: str
+    key_points: list[str]
+
+service = LLMActorService.from_openai(
+    api_key="...",
+    model="gpt-4o",
+    settings=LLMActorSettings(
+        LLM_NUM_ACTORS=8,          # Hard concurrency limit — vLLM won't be flooded
+        LLM_MAX_QUEUE_SIZE=500,    # Bounded queue — no unbounded memory growth
+    )
+)
+
+async with service:
+    # Background batch — 200 tasks, queued and dispatched safely
+    batch = [
+        service.request(msg, response_model=SummaryResult)
+        for msg in messages
+    ]
+
+    # High-priority UI request jumps the queue
+    urgent = service.request(
+        user_message,
+        response_model=SummaryResult,
+        priority=Priority.HIGH,
+    )
+
+    # Typed results — auto-retry on schema mismatch, no manual JSON parsing
+    results = [r.get() for r in batch]
+    user_result = urgent.get()
+```
+
+**What actually happens now:**
+- Requests are dispatched via `LLM_NUM_ACTORS=8` workers — vLLM gets controlled concurrency
+- `Priority.HIGH` task processes before all 200 batch tasks regardless of queue depth
+- `429 / 503` → automatic exponential backoff, transparent to caller
+- Failure threshold exceeded → Circuit Breaker opens, remaining tasks fail fast with `CircuitBreakerOpenError` instead of timing out
+- Queue full → `OverloadError` immediately, not after a 120s timeout
+- Every request traced end-to-end: queue wait time + inference time via OpenTelemetry
+
+---
+
+## Handling Overload Gracefully
+
+When the system is saturated, `OverloadError` is a signal — not a crash.
+Recommended pattern:
+
+```python
+from tenacity import retry, wait_exponential, retry_if_exception_type, stop_after_attempt
+from llm_actor.exceptions import OverloadError
+
+@retry(
+    retry=retry_if_exception_type(OverloadError),
+    wait=wait_exponential(multiplier=1, min=1, max=10),
+    stop=stop_after_attempt(5),
+)
+async def resilient_request(service, message):
+    return service.request(message, response_model=SummaryResult).get()
+```
+
+Or degrade gracefully — fall back to a lighter model, return a cached response,
+or surface an explicit "service busy" message to the user.
+
 ---
 
 ## Installation

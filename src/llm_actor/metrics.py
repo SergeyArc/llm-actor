@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import threading
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -9,15 +10,28 @@ if TYPE_CHECKING:
 
 _METRICS_INSTALL_HINT = "pip install 'llm-actor[metrics]'"
 
+_default_collector: MetricsCollector | None = None
+_default_collector_lock = threading.Lock()
+
 
 def is_prometheus_metrics_available() -> bool:
     return importlib.util.find_spec("prometheus_client") is not None
 
 
 def default_metrics_collector() -> MetricsCollector | None:
+    """Возвращает один экземпляр сборщика метрик на процесс (глобальный REGISTRY).
+
+    Повторные вызовы не регистрируют метрики заново. Для отдельного реестра передайте
+    ``MetricsCollector(registry=CollectorRegistry())`` в ``LLMActorService(..., metrics=...)``.
+    """
     if not is_prometheus_metrics_available():
         return None
-    return MetricsCollector()
+    global _default_collector
+    if _default_collector is None:
+        with _default_collector_lock:
+            if _default_collector is None:
+                _default_collector = MetricsCollector()
+    return _default_collector
 
 
 class MetricsCollector:

@@ -52,6 +52,105 @@
 - **Отсутствие проактивного лимитирования токенов**: Мы не считаем токены *до* отправки. Это идеально подходит для self-hosted инференса (vLLM/Ollama), где лимиты TPM не являются главным узким местом. Для внешних API со строгими TPM-лимитами мы полагаемся на **Реактивную устойчивость** (Backoff + CB).
 - **Один провайдер на пул**: Пул привязан к одному экземпляру клиента. Для маршрутизации между разными провайдерами с независимыми «предохранителями» используйте отдельные экземпляры `LLMActorService`.
 
+## Проблема: Как обычно выглядит production-код
+
+Большинство команд начинают с простого асинхронного клиента. Это отлично работает в разработке.
+
+```python
+# Типичный "достаточно хороший" асинхронный клиент
+class ModelClient:
+    async def generate(self, messages: list[dict]) -> str:
+        try:
+            response = await self.client.chat.completions.create(...)
+            return response.choices[0].message.content
+        except Exception as e:
+            logger.error("Generation failed: %s", e)
+            return f"Error: {e}"  # Ошибка просто "проглатывается". Вызывающий код ничего не знает.
+```
+
+Затем вы выходите в продакшн с общей GPU-нодой и запускаете 200 задач:
+
+```python
+# Кажется разумным. Но это не так.
+results = await asyncio.gather(*[client.generate(msg) for msg in messages])
+```
+
+**Что происходит на самом деле:**
+- 200 конкурентных запросов бьют по вашему инстансу vLLM → OOM или переполнение очереди.
+- Массовые таймауты → каждый вызов молча возвращает `"Error: ..."`.
+- Высокоприоритетный UI-запрос ждет за 199 фоновыми пакетными задачами.
+- Один медленный ответ вешает весь ваш слой оркестрации.
+- Никакой видимости того, что упало, когда и почему.
+
+---
+
+## Решение: LLM Actor
+
+```python
+from llm_actor import LLMActorService, LLMActorSettings, Priority
+from pydantic import BaseModel
+
+class SummaryResult(BaseModel):
+    summary: str
+    key_points: list[str]
+
+service = LLMActorService.from_openai(
+    api_key="...",
+    model="gpt-4o",
+    settings=LLMActorSettings(
+        LLM_NUM_ACTORS=8,          # Жесткий лимит конкурентности — vLLM не будет залит запросами
+        LLM_MAX_QUEUE_SIZE=500,    # Ограниченная очередь — никакой бесконтрольной траты памяти
+    )
+)
+
+async with service:
+    # Фоновый батч — 200 задач, безопасно поставленных в очередь
+    batch = [
+        service.request(msg, response_model=SummaryResult)
+        for msg in messages
+    ]
+
+    # Срочный UI-запрос проскакивает вперед очереди
+    urgent = service.request(
+        user_message,
+        response_model=SummaryResult,
+        priority=Priority.HIGH,
+    )
+
+    # Типизированные результаты — авто-ретрай при несовпадении схемы, никакого ручного парсинга JSON
+    results = [r.get() for r in batch]
+    user_result = urgent.get()
+```
+
+**Что происходит теперь:**
+- Запросы распределяются через `LLM_NUM_ACTORS=8` воркеров — vLLM получает контролируемую нагрузку.
+- Задача с `Priority.HIGH` обрабатывается раньше всех 200 пакетных задач, независимо от глубины очереди.
+- `429 / 503` → автоматический экспоненциальный бэкофф, прозрачный для вызывающего кода.
+- Порог ошибок превышен → Circuit Breaker размыкается, остальные задачи мгновенно падают с `CircuitBreakerOpenError` вместо ожидания таймаута.
+- Очередь полна → `OverloadError` немедленно, а не через 120 секунд таймаута.
+- Каждый запрос отслеживается сквозь OpenTelemetry: время ожидания в очереди + время инференса.
+
+---
+
+## Грациозная обработка перегрузки
+
+Когда система насыщена, `OverloadError` — это сигнал, а не крах. Рекомендуемый паттерн:
+
+```python
+from tenacity import retry, wait_exponential, retry_if_exception_type, stop_after_attempt
+from llm_actor.exceptions import OverloadError
+
+@retry(
+    retry=retry_if_exception_type(OverloadError),
+    wait=wait_exponential(multiplier=1, min=1, max=10),
+    stop=stop_after_attempt(5),
+)
+async def resilient_request(service, message):
+    return service.request(message, response_model=SummaryResult).get()
+```
+
+Или деградируйте плавно — переключитесь на более легкую модель, верните закешированный ответ или покажите пользователю явное сообщение "сервис занят".
+
 ---
 
 ## Установка

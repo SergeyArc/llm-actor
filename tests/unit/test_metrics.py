@@ -11,9 +11,33 @@ from llm_actor.actors.worker import ModelActor
 from llm_actor.core.messages import ActorMessage
 from llm_actor.core.request import LLMRequest
 from llm_actor.exceptions import ActorFailedError
-from llm_actor.metrics import MetricsCollector
+from llm_actor.metrics import MetricsCollector, default_metrics_collector, is_prometheus_metrics_available
 from llm_actor.settings import LLMActorSettings
 from tests.dummy_llm_client import DummyLLMClient
+
+
+def test_default_metrics_collector_returns_same_instance() -> None:
+    if not is_prometheus_metrics_available():
+        pytest.skip("prometheus_client not installed")
+    first = default_metrics_collector()
+    second = default_metrics_collector()
+    assert first is not None
+    assert first is second
+
+
+async def test_two_llm_services_with_default_metrics_do_not_duplicate_registry() -> None:
+    if not is_prometheus_metrics_available():
+        pytest.skip("prometheus_client not installed")
+    settings = LLMActorSettings(
+        LLM_NUM_ACTORS=1,
+        LLM_BATCH_SIZE=1,
+        LLM_BATCH_TIMEOUT=0.01,
+    )
+    for _ in range(2):
+        client = DummyLLMClient(settings=settings)
+        service = LLMActorService(base_client=client, settings=settings)
+        await service.start()
+        await service.stop()
 
 
 @pytest.fixture
